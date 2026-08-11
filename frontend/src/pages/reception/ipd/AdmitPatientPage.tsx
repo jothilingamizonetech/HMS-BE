@@ -15,7 +15,17 @@ export const AdmitPatientPage: React.FC = () => {
   const [selectedBedNumber, setSelectedBedNumber] = useState('');
   const [admissionDate, setAdmissionDate] = useState(getCurrentDateFormatted());
   const [attendingDoctor, setAttendingDoctor] = useState(doctors[0]?.name || 'Dr. Vikram Malhotra');
+  const [attendingNurse, setAttendingNurse] = useState('Nurse Anjali Rao');
   const [admissionReason, setAdmissionReason] = useState('Acute hypertensive observation');
+
+  const nurseOptions = [
+    'Nurse Anjali Rao',
+    'Nurse Sunita Verma',
+    'Nurse Priya Sharma',
+    'Nurse Kavita Nair',
+    'Nurse Meena Kumari',
+    'Nurse Sneha Patel',
+  ];
 
   const selectedPatientObj = patients.find((p) => p.uhid === selectedUhid);
 
@@ -48,6 +58,7 @@ export const AdmitPatientPage: React.FC = () => {
         bedId: chosenBed?.id,
         admissionDate,
         attendingDoctor,
+        attendingNurse,
         admissionReason,
         emergencyContact: `${selectedPatientObj.emergencyContactName} (${selectedPatientObj.emergencyPhone})`,
         insuranceProvider: selectedPatientObj.insuranceProvider,
@@ -151,6 +162,22 @@ export const AdmitPatientPage: React.FC = () => {
               {doctors.map((doc) => (
                 <option key={doc.id} value={doc.name}>
                   {doc.name} - {doc.department}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Attending Nurse */}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">Attending Nurse *</label>
+            <select
+              value={attendingNurse}
+              onChange={(e) => setAttendingNurse(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-semibold text-slate-900 outline-none focus:bg-white"
+            >
+              {nurseOptions.map((nurse) => (
+                <option key={nurse} value={nurse}>
+                  {nurse}
                 </option>
               ))}
             </select>

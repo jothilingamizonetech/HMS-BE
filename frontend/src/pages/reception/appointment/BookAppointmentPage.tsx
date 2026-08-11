@@ -170,7 +170,7 @@ export const BookAppointmentPage: React.FC = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            Book walk-in appointments or process online appointment requests submitted by patients to your branch.
+            Book appointments or process online appointment requests submitted by patients to your branch.
           </p>
         </div>
 
@@ -204,7 +204,7 @@ export const BookAppointmentPage: React.FC = () => {
           }`}
         >
           <CalendarPlus className="w-4 h-4" />
-          <span>Direct Walk-in / OPD Booking</span>
+          <span>Direct OPD Appointment Booking</span>
         </button>
 
         <button

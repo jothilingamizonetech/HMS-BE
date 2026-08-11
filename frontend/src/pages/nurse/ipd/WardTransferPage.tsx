@@ -1,12 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import {
-  ArrowLeftRight,
+  BedDouble,
   Search,
   Eye,
-  Trash2,
-  CheckCircle2,
+  Lock,
+  Building2,
+  UserCheck,
+  FileText,
+  ShieldCheck,
   Clock,
-  Save,
+  ArrowLeftRight,
+  ShieldAlert,
 } from 'lucide-react';
 import { WardTransfer } from '../../../types/nurse';
 import { Patient } from '../../../types/hms';
@@ -18,7 +22,7 @@ import { Modal } from '../../../components/common/Modal';
 import { NurseBranchSelector } from '../../../components/nurse/NurseBranchSelector';
 
 export const WardTransferPage: React.FC = () => {
-  const { transfers, addWardTransfer, deleteWardTransfer, completeWardTransfer, selectedBranch } = useNurse();
+  const { transfers, selectedBranch } = useNurse();
   const { patients, beds, addToast } = useHMS();
 
   // Active Selected Patient from HMS Database
@@ -32,14 +36,8 @@ export const WardTransferPage: React.FC = () => {
 
   const currentWard = occupiedBed?.ward || (selectedPatient?.status === 'Admitted' ? 'ICU Ward' : 'General Ward');
   const currentBed = occupiedBed?.bedNumber || 'B-101';
-
-  // Editable Ward Transfer Form fields
-  const [transferForm, setTransferForm] = useState({
-    newWard: 'Deluxe Private',
-    newBed: 'B-301',
-    transferReason: '',
-    remarks: '',
-  });
+  const roomNumber = occupiedBed ? `Room-${occupiedBed.roomNumber}` : 'Room 102';
+  const wardCategory = occupiedBed?.category || 'General IPD Care';
 
   // Table & Modal states
   const [tableSearch, setTableSearch] = useState('');
@@ -47,7 +45,6 @@ export const WardTransferPage: React.FC = () => {
   const itemsPerPage = 5;
 
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedTransferRecord, setSelectedTransferRecord] = useState<WardTransfer | null>(null);
 
   // Handle Patient selection
@@ -58,47 +55,6 @@ export const WardTransferPage: React.FC = () => {
 
   const handleClearPatient = () => {
     setSelectedPatient(null);
-  };
-
-  // Submit Ward Transfer Form
-  const handleSaveTransfer = (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!selectedPatient) {
-      addToast('error', 'No Patient Selected', 'Please search and select a patient first.');
-      return;
-    }
-
-    if (!transferForm.newWard.trim() || !transferForm.newBed.trim()) {
-      addToast('error', 'Validation Error', 'New Ward and Bed selection are required.');
-      return;
-    }
-
-    addWardTransfer({
-      patientUhid: selectedPatient.uhid,
-      patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
-      currentWard: currentWard,
-      currentBed: currentBed,
-      newWard: transferForm.newWard,
-      newBed: transferForm.newBed,
-      transferReason: transferForm.transferReason || 'Clinical step-down transfer',
-      transferDate: new Date().toISOString().split('T')[0],
-      transferTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      doctorApproval: 'Approved',
-      doctorName: 'Dr. Vikram Malhotra',
-      remarks: transferForm.remarks,
-      transferredBy: 'Nurse Anjali Rao',
-      status: 'Pending',
-      branch: selectedBranch !== 'All' ? selectedBranch : selectedPatient.branch || 'Main Branch',
-    });
-
-    // Reset editable fields
-    setTransferForm({
-      newWard: 'Deluxe Private',
-      newBed: 'B-301',
-      transferReason: '',
-      remarks: '',
-    });
   };
 
   // Filtered Transfers Table
@@ -114,19 +70,10 @@ export const WardTransferPage: React.FC = () => {
     });
   }, [transfers, tableSearch, selectedBranch]);
 
-  const totalPages = Math.ceil(filteredTransfers.length / itemsPerPage) || 1;
   const paginatedTransfers = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
     return filteredTransfers.slice(start, start + itemsPerPage);
   }, [filteredTransfers, currentPage]);
-
-  const handleConfirmDelete = () => {
-    if (selectedTransferRecord) {
-      deleteWardTransfer(selectedTransferRecord.id);
-      setIsDeleteModalOpen(false);
-      setSelectedTransferRecord(null);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -139,14 +86,20 @@ export const WardTransferPage: React.FC = () => {
           <nav className="flex text-xs font-semibold text-slate-500 gap-2 mb-1">
             <span>Nurse Module</span>
             <span>/</span>
-            <span className="text-blue-600">Ward Transfer</span>
+            <span className="text-blue-600">Patient Ward</span>
           </nav>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight">
-            Patient Ward & Bed Transfer
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+            <BedDouble className="w-6 h-6 text-indigo-600" />
+            <span>Patient Ward & Bed Location Details</span>
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Search patient from HMS database, view read-only profile, and execute ward/bed reallocation.
+            Search patient from HMS database to view read-only ward assignment, room info, and transfer log. (Ward transfers managed by Reception).
           </p>
+        </div>
+
+        <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 px-3.5 py-2 rounded-xl text-xs font-bold text-indigo-800">
+          <Lock className="w-4 h-4 text-indigo-600" />
+          <span>Read-Only Nurse Access</span>
         </div>
       </div>
 
@@ -160,117 +113,71 @@ export const WardTransferPage: React.FC = () => {
       {/* STEP 2: READ-ONLY PATIENT INFORMATION CARD */}
       <PatientInfoCard patient={selectedPatient} />
 
-      {/* STEP 3: WARD TRANSFER FORM (EDITABLE FIELDS ONLY) */}
+      {/* STEP 3: READ-ONLY PATIENT WARD INFORMATION DISPLAY */}
       {selectedPatient && (
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 flex-wrap gap-2">
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <ArrowLeftRight className="w-4 h-4 text-indigo-600" />
-              <span>Transfer Ward for {selectedPatient.firstName} {selectedPatient.lastName}</span>
+              <BedDouble className="w-4 h-4 text-indigo-600" />
+              <span>Assigned Ward Details for {selectedPatient.firstName} {selectedPatient.lastName}</span>
             </h3>
-            <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg">
-              Ward Reallocation Form
+            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-lg flex items-center gap-1">
+              <Lock className="w-3 h-3" />
+              Read-Only Ward Info
             </span>
           </div>
 
-          <form onSubmit={handleSaveTransfer} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-              {/* READ-ONLY CURRENT LOCATION */}
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                  Current Ward (Read-Only)
-                </label>
-                <p className="font-bold text-slate-900 text-xs">{currentWard}</p>
-              </div>
-
-              <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
-                <label className="block text-[11px] font-semibold text-slate-500 mb-1">
-                  Current Bed (Read-Only)
-                </label>
-                <p className="font-bold text-slate-900 text-xs">{currentBed}</p>
-              </div>
-
-              {/* EDITABLE TARGET NEW LOCATION */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Select New Ward <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  value={transferForm.newWard}
-                  onChange={(e) => setTransferForm({ ...transferForm, newWard: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 cursor-pointer"
-                >
-                  <option value="ICU Ward">ICU (Intensive Care)</option>
-                  <option value="General Ward">General Ward</option>
-                  <option value="Deluxe Private">Deluxe Private</option>
-                  <option value="Surgical Ward">Surgical Ward</option>
-                  <option value="Semi-Private">Semi-Private Room</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Select New Bed <span className="text-rose-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. B-301"
-                  value={transferForm.newBed}
-                  onChange={(e) => setTransferForm({ ...transferForm, newBed: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="md:col-span-4">
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Transfer Reason
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="Reason for ward transfer e.g. Patient stabilized post-crisis..."
-                  value={transferForm.transferReason}
-                  onChange={(e) => setTransferForm({ ...transferForm, transferReason: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                />
-              </div>
-
-              <div className="md:col-span-4">
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Transfer Remarks
-                </label>
-                <input
-                  type="text"
-                  placeholder="Additional transfer remarks..."
-                  value={transferForm.remarks}
-                  onChange={(e) => setTransferForm({ ...transferForm, remarks: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-900 outline-none"
-                />
-              </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                Assigned Ward (Read-Only)
+              </label>
+              <p className="font-bold text-slate-900 text-xs">{currentWard}</p>
             </div>
 
-            <div className="flex justify-end pt-2">
-              <button
-                type="submit"
-                className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-2 cursor-pointer"
-              >
-                <Save className="w-4 h-4" />
-                <span>Transfer Patient</span>
-              </button>
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                Assigned Bed Number (Read-Only)
+              </label>
+              <p className="font-bold text-slate-900 text-xs">{currentBed}</p>
             </div>
-          </form>
+
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                Room Number & Category
+              </label>
+              <p className="font-bold text-slate-900 text-xs">{roomNumber} ({wardCategory})</p>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-xl border border-slate-200">
+              <label className="block text-[11px] font-semibold text-slate-500 mb-1">
+                Occupancy & Admission Status
+              </label>
+              <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                {selectedPatient.status === 'Admitted' ? '🟢 IPD Admitted & Occupied' : '🔵 Daycare / OPD'}
+              </span>
+            </div>
+          </div>
+
+          {/* Access Banner */}
+          <div className="p-3.5 bg-amber-50/80 border border-amber-200/80 rounded-xl flex items-center gap-3 text-xs text-amber-900">
+            <ShieldAlert className="w-5 h-5 text-amber-600 shrink-0" />
+            <p className="font-medium">
+              <strong>Reception Management Restriction:</strong> Patient ward transfers and bed allocations are authorized exclusively by the <strong>Reception Desk</strong>. Nurse portal has read-only access to view current patient ward locations.
+            </p>
+          </div>
         </div>
       )}
 
-      {/* HISTORICAL TRANSFERS TABLE */}
+      {/* HISTORICAL TRANSFERS TABLE (READ-ONLY FOR NURSE) */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="p-5 border-b border-slate-100 flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
               <ArrowLeftRight className="w-4 h-4 text-indigo-600" />
-              <span>Ward Transfer Log</span>
+              <span>Patient Ward Transfer Log (Read-Only)</span>
             </h3>
-            <p className="text-xs text-slate-500">History of patient bed transfers</p>
+            <p className="text-xs text-slate-500">History of patient bed transfers executed by Reception</p>
           </div>
 
           <div className="relative w-64">
@@ -295,7 +202,7 @@ export const WardTransferPage: React.FC = () => {
                 <th className="py-3.5 px-4">To Ward</th>
                 <th className="py-3.5 px-4">Date & Time</th>
                 <th className="py-3.5 px-4">Status</th>
-                <th className="py-3.5 px-4 text-right">Actions</th>
+                <th className="py-3.5 px-4 text-right">View Log</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
@@ -314,34 +221,16 @@ export const WardTransferPage: React.FC = () => {
                       <span className="font-bold text-emerald-600">{t.status}</span>
                     </td>
                     <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        {t.status !== 'Completed' && (
-                          <button
-                            onClick={() => completeWardTransfer(t.id)}
-                            className="px-2 py-1 rounded-lg bg-emerald-600 text-white font-bold text-[10px] cursor-pointer"
-                          >
-                            Complete
-                          </button>
-                        )}
-                        <button
-                          onClick={() => {
-                            setSelectedTransferRecord(t);
-                            setIsViewModalOpen(true);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedTransferRecord(t);
-                            setIsDeleteModalOpen(true);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedTransferRecord(t);
+                          setIsViewModalOpen(true);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
+                        title="View Transfer Details"
+                      >
+                        <Eye className="w-4 h-4" />
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -357,7 +246,7 @@ export const WardTransferPage: React.FC = () => {
         </div>
       </div>
 
-      {/* View Modal */}
+      {/* View Modal (Read-Only) */}
       {selectedTransferRecord && (
         <Modal
           isOpen={isViewModalOpen}
@@ -367,35 +256,14 @@ export const WardTransferPage: React.FC = () => {
         >
           <div className="space-y-3 text-xs p-2">
             <p><span className="font-bold text-slate-700">Patient:</span> {selectedTransferRecord.patientName} ({selectedTransferRecord.patientUhid})</p>
-            <p><span className="font-bold text-slate-700">From:</span> {selectedTransferRecord.currentWard} (Bed {selectedTransferRecord.currentBed})</p>
-            <p><span className="font-bold text-slate-700">To:</span> {selectedTransferRecord.newWard} (Bed {selectedTransferRecord.newBed})</p>
-            <p><span className="font-bold text-slate-700">Reason:</span> {selectedTransferRecord.transferReason}</p>
-            <p><span className="font-bold text-slate-700">Status:</span> {selectedTransferRecord.status}</p>
+            <p><span className="font-bold text-slate-700">From Ward:</span> {selectedTransferRecord.currentWard} (Bed {selectedTransferRecord.currentBed})</p>
+            <p><span className="font-bold text-slate-700">To Ward:</span> {selectedTransferRecord.newWard} (Bed {selectedTransferRecord.newBed})</p>
+            <p><span className="font-bold text-slate-700">Transfer Reason:</span> {selectedTransferRecord.transferReason}</p>
+            <p><span className="font-bold text-slate-700">Transferred By:</span> {selectedTransferRecord.transferredBy || 'Reception Desk'}</p>
+            <p><span className="font-bold text-slate-700">Status:</span> <span className="font-bold text-emerald-600">{selectedTransferRecord.status}</span></p>
             <div className="flex justify-end pt-3">
-              <button onClick={() => setIsViewModalOpen(false)} className="px-4 py-2 bg-slate-100 rounded-xl font-bold cursor-pointer">
+              <button onClick={() => setIsViewModalOpen(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold cursor-pointer">
                 Close
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {selectedTransferRecord && (
-        <Modal
-          isOpen={isDeleteModalOpen}
-          onClose={() => setIsDeleteModalOpen(false)}
-          title="Delete Ward Transfer"
-          maxWidth="sm"
-        >
-          <div className="space-y-4 text-xs">
-            <p>Are you sure you want to delete this transfer log?</p>
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setIsDeleteModalOpen(false)} className="px-4 py-2 bg-slate-100 rounded-xl font-bold cursor-pointer">
-                Cancel
-              </button>
-              <button onClick={handleConfirmDelete} className="px-4 py-2 bg-rose-600 text-white rounded-xl font-bold cursor-pointer">
-                Delete
               </button>
             </div>
           </div>
@@ -404,3 +272,4 @@ export const WardTransferPage: React.FC = () => {
     </div>
   );
 };
+

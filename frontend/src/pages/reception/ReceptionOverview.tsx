@@ -115,10 +115,10 @@ export const ReceptionOverview: React.FC = () => {
           <p className="text-[11px] text-slate-500">{appointments.length} Total appointments logged</p>
         </div>
 
-        {/* Card 3: Walk-in Patients */}
+        {/* Card 3: OPD Patient Queue */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Walk-in OPD Queue</span>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Active OPD Queue</span>
             <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
               <Clock className="w-5 h-5" />
             </div>
@@ -129,7 +129,7 @@ export const ReceptionOverview: React.FC = () => {
               In Queue
             </span>
           </div>
-          <p className="text-[11px] text-slate-500">Tokens active at reception</p>
+          <p className="text-[11px] text-slate-500">Patients waiting for doctor</p>
         </div>
 
         {/* Card 4: IPD Admissions */}

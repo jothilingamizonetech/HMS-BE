@@ -189,8 +189,8 @@ export default function App() {
 
                       {/* Appointment Management */}
                       <Route path="appointment/book" element={<BookAppointmentPage />} />
-                      <Route path="appointment/walkin" element={<WalkInPage />} />
-                      <Route path="appointment/walk-in" element={<WalkInPage />} />
+                      <Route path="appointment/walkin" element={<Navigate to="/reception/appointment/book" replace />} />
+                      <Route path="appointment/walk-in" element={<Navigate to="/reception/appointment/book" replace />} />
                       <Route path="appointment/availability" element={<DoctorAvailabilityPage />} />
                       <Route path="appointment/doctors" element={<DoctorAvailabilityPage />} />
                       <Route path="appointment/queue" element={<QueueManagementPage />} />
@@ -313,6 +313,7 @@ export default function App() {
                       <Route index element={<Navigate to="/nurse/dashboard" replace />} />
                       <Route path="dashboard" element={<NurseDashboard />} />
                       <Route path="opd/vitals" element={<RecordVitalsPage />} />
+                      <Route path="ipd/patient-ward" element={<WardTransferPage />} />
                       <Route path="ipd/ward-transfer" element={<WardTransferPage />} />
                       <Route path="ipd/nursing-notes" element={<NursingNotesPage />} />
                       <Route path="ipd/medication-administration" element={<MedicationAdminPage />} />
