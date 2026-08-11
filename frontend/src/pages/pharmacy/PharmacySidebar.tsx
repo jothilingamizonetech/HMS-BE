@@ -5,8 +5,6 @@ import {
   LayoutDashboard,
   Pill,
   Tags,
-  Boxes,
-  ClockAlert,
   Warehouse,
   FileCheck2,
   ShoppingCart,
@@ -33,9 +31,6 @@ export const PharmacySidebar: React.FC<PharmacySidebarProps> = ({ mobileOpen, se
   // Accordion toggle states
   const [medicineMasterOpen, setMedicineMasterOpen] = useState(
     location.pathname.includes('/pharmacy/medicine')
-  );
-  const [batchMgmtOpen, setBatchMgmtOpen] = useState(
-    location.pathname.includes('/pharmacy/batch')
   );
 
   const handleLogout = () => {
@@ -132,44 +127,6 @@ export const PharmacySidebar: React.FC<PharmacySidebarProps> = ({ mobileOpen, se
                 >
                   <Tags className="w-3.5 h-3.5" />
                   <span>Medicine Categories</span>
-                </NavLink>
-              </div>
-            )}
-          </div>
-
-          {/* Batch Management Menu Accordion */}
-          <div>
-            <button
-              onClick={() => setBatchMgmtOpen(!batchMgmtOpen)}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <Boxes className="w-4 h-4 text-blue-600" />
-                <span>Batch Management</span>
-              </div>
-              {batchMgmtOpen ? (
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-              )}
-            </button>
-            {batchMgmtOpen && (
-              <div className="mt-1 space-y-0.5">
-                <NavLink
-                  to="/pharmacy/batch/management"
-                  onClick={() => setMobileOpen(false)}
-                  className={subNavItemClass}
-                >
-                  <Boxes className="w-3.5 h-3.5" />
-                  <span>Batch List & Stock</span>
-                </NavLink>
-                <NavLink
-                  to="/pharmacy/batch/expiry"
-                  onClick={() => setMobileOpen(false)}
-                  className={subNavItemClass}
-                >
-                  <ClockAlert className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Expiry Tracking</span>
                 </NavLink>
               </div>
             )}

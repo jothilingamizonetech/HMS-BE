@@ -402,10 +402,10 @@ export const PharmacyOverview: React.FC = () => {
               <ClockAlert className="w-4 h-4 text-rose-600" /> Expiry Alerts
             </h3>
             <button
-              onClick={() => navigate('/pharmacy/batch/expiry')}
+              onClick={() => navigate('/pharmacy/stock/inventory')}
               className="text-[10px] font-bold text-rose-600 hover:underline"
             >
-              Manage
+              View Stock
             </button>
           </div>
           <div className="space-y-3 text-xs">

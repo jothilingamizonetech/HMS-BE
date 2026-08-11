@@ -96,8 +96,6 @@ import { LabLeavePage } from './pages/lab/LabLeavePage';
 // Pharmacy Module Components
 import { PharmacyDashboardLayout } from './pages/pharmacy/PharmacyDashboardLayout';
 import { PharmacyOverview } from './pages/pharmacy/PharmacyOverview';
-import { BatchManagementPage } from './pages/pharmacy/batch/BatchManagementPage';
-import { ExpiryTrackingPage } from './pages/pharmacy/batch/ExpiryTrackingPage';
 import { MedicineListPage } from './pages/pharmacy/medicine/MedicineListPage';
 import { MedicineCategoriesPage } from './pages/pharmacy/medicine/MedicineCategoriesPage';
 import { DirectSalesPOSPage } from './pages/pharmacy/pos/DirectSalesPOSPage';
@@ -258,9 +256,6 @@ export default function App() {
                       <Route path="prescription/list" element={<PrescriptionDispensingPage />} />
                       <Route path="medicine/list" element={<MedicineListPage />} />
                       <Route path="medicine/categories" element={<MedicineCategoriesPage />} />
-                      <Route path="batch/master" element={<BatchManagementPage />} />
-                      <Route path="batch/management" element={<BatchManagementPage />} />
-                      <Route path="batch/expiry" element={<ExpiryTrackingPage />} />
                       <Route path="stock" element={<StockInventoryPage />} />
                       <Route path="stock/inventory" element={<StockInventoryPage />} />
                       <Route path="returns/customer" element={<CustomerReturnsPage />} />
