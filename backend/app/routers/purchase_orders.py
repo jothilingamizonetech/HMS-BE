@@ -10,7 +10,7 @@ from app.core.logging_utils import log_audit
 from app.core.database import get_db
 from app.deps import get_current_active_user, require_permission
 from app.models.user import User
-from app.models.purchase_order import PurchaseOrder, POItem
+from app.models.purchase_order import PurchaseOrder, POItem, POStatus
 from app.schemas.purchase_order import PurchaseOrderCreate, PurchaseOrderUpdate, PurchaseOrderOut
 from app.services.notification_service import notify_user_or_role
 
@@ -175,8 +175,8 @@ def approve_purchase_order(po_id: str, db: Session = Depends(get_db), _=Depends(
     # this PO and accepted quantities are verified (see goods_receipts.py).
     # This used to add line.quantity to current_stock here too, which
     # double-counted every item once at approval and again at GRN receipt.
-    if po.status != "Approved":
-        po.status = "Approved"
+    if po.status != POStatus.Approved:
+        po.status = POStatus.Approved
     db.commit()
     db.refresh(po)
     log_audit(f"POST /store/purchase-orders/{po_id}/approve", {}, {}, po, po)
@@ -191,7 +191,7 @@ def approve_purchase_order(po_id: str, db: Session = Depends(get_db), _=Depends(
 @router.post("/{po_id}/reject", response_model=PurchaseOrderOut)
 def reject_purchase_order(po_id: str, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
     po = get_or_404(db, PurchaseOrder, po_id, "Purchase order")
-    po.status = "Rejected"
+    po.status = POStatus.Rejected
     db.commit()
     db.refresh(po)
     log_audit(f"POST /store/purchase-orders/{po_id}/reject", {}, {}, po, po)

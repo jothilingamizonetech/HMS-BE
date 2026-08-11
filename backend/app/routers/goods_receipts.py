@@ -11,7 +11,7 @@ from app.core.database import get_db
 from app.deps import get_current_active_user, require_permission
 from app.models.goods_receipt import GoodsReceipt, GRNItem
 from app.models.store_item import ItemMaster
-from app.models.purchase_order import PurchaseOrder
+from app.models.purchase_order import PurchaseOrder, POStatus
 from app.schemas.goods_receipt import GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptOut
 from app.services.notification_service import notify_user_or_role
 
@@ -72,8 +72,8 @@ def create_grn(payload: GoodsReceiptCreate, db: Session = Depends(get_db), _=Dep
     # received and verified, the PO is fulfilled.
     if data.get("purchase_order_id"):
         po = db.get(PurchaseOrder, data["purchase_order_id"])
-        if po and po.status == "Approved":
-            po.status = "Fulfilled"
+        if po and po.status == POStatus.Approved:
+            po.status = POStatus.Fulfilled
 
     try:
         db.commit()
@@ -132,7 +132,7 @@ def delete_grn(grn_id: str, db: Session = Depends(get_db), _=Depends(get_current
                 item.current_stock -= line.accepted_quantity
     if grn.purchase_order_id:
         po = db.get(PurchaseOrder, grn.purchase_order_id)
-        if po and po.status == "Fulfilled":
-            po.status = "Approved"
+        if po and po.status == POStatus.Fulfilled:
+            po.status = POStatus.Approved
     db.delete(grn)
     db.commit()
