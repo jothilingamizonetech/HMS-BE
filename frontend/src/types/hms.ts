@@ -236,6 +236,7 @@ export interface IPDAdmission {
   bedId?: string; // links the admission to a specific Bed row so the backend can auto-occupy it
   admissionDate: string;
   attendingDoctor: string;
+  attendingNurse?: string;
   admissionReason: string;
   emergencyContact: string;
   insuranceProvider?: string;

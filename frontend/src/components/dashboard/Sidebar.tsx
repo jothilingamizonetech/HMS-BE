@@ -183,14 +183,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                   <span>Book Appointment</span>
                 </NavLink>
                 <NavLink
-                  to="/reception/appointment/walkin"
-                  onClick={() => setMobileOpen(false)}
-                  className={subNavItemClass}
-                >
-                  <UserCheck2 className="w-3.5 h-3.5" />
-                  <span>Walk-in Registration</span>
-                </NavLink>
-                <NavLink
                   to="/reception/appointment/availability"
                   onClick={() => setMobileOpen(false)}
                   className={subNavItemClass}

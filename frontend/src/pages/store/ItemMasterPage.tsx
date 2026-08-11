@@ -16,7 +16,7 @@ import {
   X,
   Layers,
 } from 'lucide-react';
-import { ItemMaster, ItemCategory, ItemUnit } from '../../types/store';
+import { ItemMaster, ItemCategory, ItemUnit, MEDICINE_CATEGORIES, OTHER_HOSPITAL_CATEGORIES } from '../../types/store';
 import { useHMS } from '../../context/HMSContext';
 import { Modal } from '../../components/common/Modal';
 
@@ -47,8 +47,11 @@ export const ItemMasterPage: React.FC = () => {
   const initialFormState: Omit<ItemMaster, 'id'> = {
     itemCode: `ITM-${100 + items.length + 1}`,
     itemName: '',
-    category: 'Pharmaceuticals',
+    category: 'Antibiotics',
     subCategory: '',
+    genericComposition: '',
+    strength: '',
+    dosageForm: 'Tablet',
     unit: 'Box',
     packQuantity: 20,
     issueUnit: 'Piece',
@@ -255,11 +258,16 @@ export const ItemMasterPage: React.FC = () => {
               className="bg-transparent font-bold text-blue-600 outline-none cursor-pointer"
             >
               <option value="All">All Categories</option>
-              <option value="Pharmaceuticals">Pharmaceuticals</option>
-              <option value="Surgical Supplies">Surgical Supplies</option>
-              <option value="Consumables">Consumables</option>
-              <option value="Lab Reagents">Lab Reagents</option>
-              <option value="Medical Equipment">Medical Equipment</option>
+              <optgroup label="Medicines & Pharmaceuticals">
+                {MEDICINE_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Other Hospital Items">
+                {OTHER_HOSPITAL_CATEGORIES.map((cat) => (
+                  <option key={cat} value={cat}>{cat}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
@@ -311,6 +319,11 @@ export const ItemMasterPage: React.FC = () => {
                         <div>
                           <p className="font-bold text-slate-900">{item.itemName}</p>
                           <p className="text-[10px] text-blue-600 font-mono font-semibold">{item.itemCode}</p>
+                          {(item.genericComposition || item.strength) && (
+                            <p className="text-[10px] text-slate-500 font-medium italic">
+                              {item.genericComposition || ''} {item.strength ? `(${item.strength})` : ''} {item.dosageForm ? `• ${item.dosageForm}` : ''}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -462,12 +475,16 @@ export const ItemMasterPage: React.FC = () => {
                 onChange={(e) => setFormData({ ...formData, category: e.target.value as ItemCategory })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
               >
-                <option value="Pharmaceuticals">Pharmaceuticals</option>
-                <option value="Surgical Supplies">Surgical Supplies</option>
-                <option value="Consumables">Consumables</option>
-                <option value="Lab Reagents">Lab Reagents</option>
-                <option value="Medical Equipment">Medical Equipment</option>
-                <option value="General Store">General Store</option>
+                <optgroup label="Medicines & Pharmaceuticals">
+                  {MEDICINE_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </optgroup>
+                <optgroup label="Other Hospital Items">
+                  {OTHER_HOSPITAL_CATEGORIES.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </optgroup>
               </select>
             </div>
 
@@ -477,9 +494,53 @@ export const ItemMasterPage: React.FC = () => {
                 type="text"
                 value={formData.subCategory}
                 onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
-                placeholder="e.g. Analgesics"
+                placeholder="e.g. Anti-diabetic, Analgesics"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
               />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Generic / Composition</label>
+              <input
+                type="text"
+                value={formData.genericComposition || ''}
+                onChange={(e) => setFormData({ ...formData, genericComposition: e.target.value })}
+                placeholder="e.g. Glimepiride + Metformin"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Strength</label>
+              <input
+                type="text"
+                value={formData.strength || ''}
+                onChange={(e) => setFormData({ ...formData, strength: e.target.value })}
+                placeholder="e.g. 2 mg + 500 mg"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Dosage Form</label>
+              <select
+                value={formData.dosageForm || 'Tablet'}
+                onChange={(e) => setFormData({ ...formData, dosageForm: e.target.value })}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
+              >
+                <option value="Tablet">Tablet</option>
+                <option value="Capsule">Capsule</option>
+                <option value="Syrup">Syrup</option>
+                <option value="Injection">Injection</option>
+                <option value="IV Fluid">IV Fluid</option>
+                <option value="Ointment">Ointment / Gel</option>
+                <option value="Drops">Drops</option>
+                <option value="Inhaler">Inhaler</option>
+                <option value="Suppository">Suppository</option>
+                <option value="Medical Supply">Medical Supply</option>
+                <option value="Equipment">Equipment</option>
+                <option value="General Item">General Item</option>
+              </select>
             </div>
 
             <div>

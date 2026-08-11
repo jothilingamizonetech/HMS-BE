@@ -151,12 +151,12 @@ export const NurseSidebar: React.FC<NurseSidebarProps> = ({ mobileOpen, setMobil
             {ipdOpen && (
               <div className="mt-1 space-y-0.5">
                 <NavLink
-                  to="/nurse/ipd/ward-transfer"
+                  to="/nurse/ipd/patient-ward"
                   onClick={() => setMobileOpen(false)}
                   className={subNavItemClass}
                 >
-                  <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                  <span className="truncate">Ward Transfer</span>
+                  <BedDouble className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                  <span className="truncate">Patient Ward</span>
                 </NavLink>
                 <NavLink
                   to="/nurse/ipd/nursing-notes"

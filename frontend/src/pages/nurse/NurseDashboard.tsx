@@ -274,16 +274,16 @@ export const NurseDashboard: React.FC = () => {
           </button>
 
           <button
-            onClick={() => navigate('/nurse/ipd/ward-transfer')}
+            onClick={() => navigate('/nurse/ipd/patient-ward')}
             className="flex items-center justify-between p-4 rounded-xl border border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50 hover:border-indigo-300 transition-all cursor-pointer group text-left"
           >
             <div className="flex items-center gap-3">
               <div className="p-2.5 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/20">
-                <ArrowLeftRight className="w-5 h-5" />
+                <BedDouble className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-900 group-hover:text-indigo-700">Ward Transfer</p>
-                <p className="text-[10px] text-slate-500">Reallocate patient bed</p>
+                <p className="text-xs font-bold text-slate-900 group-hover:text-indigo-700">Patient Ward</p>
+                <p className="text-[10px] text-slate-500">View ward & bed details</p>
               </div>
             </div>
             <ArrowRight className="w-4 h-4 text-indigo-400 group-hover:translate-x-1 transition-transform" />

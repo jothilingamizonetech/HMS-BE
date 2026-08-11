@@ -107,7 +107,7 @@ export const QueueManagementPage: React.FC = () => {
             <h3 className="text-sm font-bold text-slate-900">No Patients in OPD Queue</h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
               There are currently no patients waiting in the queue for <span className="font-semibold text-slate-700">{selectedDepartment === 'All' ? 'any department' : selectedDepartment}</span>.
-              New appointment bookings and walk-in registrations will appear here automatically.
+              New appointment bookings will appear here automatically.
             </p>
           </div>
         ) : (
