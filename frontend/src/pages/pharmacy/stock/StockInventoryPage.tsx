@@ -79,47 +79,38 @@ export const StockInventoryPage: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <Warehouse className="w-6 h-6 text-emerald-600" /> Stock Control & Inventory Audit
+              <Warehouse className="w-6 h-6 text-emerald-600" /> Stock & Inventory Management
             </h1>
             <p className="text-xs text-slate-500 mt-1">
-              Monitor min/max reorder levels, rack storage matrix & trigger automated low stock alerts.
+              Real-time medicine stock status, total quantities & inventory availability.
             </p>
-          </div>
-
-          {/* Barcode Search Widget */}
-          <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
-            <Scan className="w-4 h-4 text-emerald-600 shrink-0 ml-2" />
-            <input
-              type="text"
-              value={barcodeInput}
-              onChange={(e) => setBarcodeInput(e.target.value)}
-              placeholder="Scan Barcode (e.g. MED-1001)..."
-              className="bg-transparent text-xs font-semibold text-slate-900 outline-none w-48"
-            />
-            {barcodeInput && (
-              <button onClick={() => setBarcodeInput('')} className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
         </div>
 
-        {/* 4 Metric Cards */}
+        {/* 4 Summary Metric Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2 border-t border-slate-100">
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between">
+          <div
+            onClick={() => setStockFilter('All')}
+            className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+              stockFilter === 'All' ? 'bg-blue-100 border-blue-400 shadow-sm' : 'bg-slate-50 border-slate-200'
+            }`}
+          >
             <div>
-              <span className="text-[10px] font-bold text-slate-500 uppercase">Total Inventory Stock</span>
-              <h3 className="text-2xl font-black text-slate-900 mt-0.5">{totalStockCount} Units</h3>
+              <span className="text-[10px] font-bold text-slate-500 uppercase">Total Items</span>
+              <h3 className="text-2xl font-black text-slate-900 mt-0.5">{medicines.length} Medicines</h3>
             </div>
             <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
               <Boxes className="w-5 h-5" />
             </div>
           </div>
 
-          <div className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200 flex items-center justify-between">
+          <div
+            onClick={() => setStockFilter('All')}
+            className="p-4 bg-emerald-50/60 rounded-xl border border-emerald-200 flex items-center justify-between"
+          >
             <div>
               <span className="text-[10px] font-bold text-emerald-800 uppercase">Available Stock</span>
-              <h3 className="text-2xl font-black text-emerald-950 mt-0.5">{availableStockCount} Formulations</h3>
+              <h3 className="text-2xl font-black text-emerald-950 mt-0.5">{availableStockCount} Items</h3>
             </div>
             <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
               <CheckCircle2 className="w-5 h-5" />
@@ -128,8 +119,9 @@ export const StockInventoryPage: React.FC = () => {
 
           <div
             onClick={() => setStockFilter('Low')}
-            className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${stockFilter === 'Low' ? 'bg-amber-100 border-amber-400 shadow-sm' : 'bg-amber-50/60 border-amber-200'
-              }`}
+            className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+              stockFilter === 'Low' ? 'bg-amber-100 border-amber-400 shadow-sm' : 'bg-amber-50/60 border-amber-200'
+            }`}
           >
             <div>
               <span className="text-[10px] font-bold text-amber-900 uppercase">Low Stock Alerts</span>
@@ -142,8 +134,9 @@ export const StockInventoryPage: React.FC = () => {
 
           <div
             onClick={() => setStockFilter('OutOfStock')}
-            className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${stockFilter === 'OutOfStock' ? 'bg-rose-100 border-rose-400 shadow-sm' : 'bg-rose-50/60 border-rose-200'
-              }`}
+            className={`p-4 rounded-xl border flex items-center justify-between cursor-pointer transition-all ${
+              stockFilter === 'OutOfStock' ? 'bg-rose-100 border-rose-400 shadow-sm' : 'bg-rose-50/60 border-rose-200'
+            }`}
           >
             <div>
               <span className="text-[10px] font-bold text-rose-900 uppercase">Out of Stock</span>
@@ -164,7 +157,7 @@ export const StockInventoryPage: React.FC = () => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by Medicine, Code, Brand or Rack..."
+            placeholder="Search by Medicine Name or Code..."
             className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-xs font-medium text-slate-800 shadow-2xs outline-none focus:ring-2 focus:ring-emerald-500/20"
           />
         </div>
@@ -174,10 +167,11 @@ export const StockInventoryPage: React.FC = () => {
             <button
               key={filter}
               onClick={() => setStockFilter(filter)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${stockFilter === filter
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                stockFilter === filter
                   ? 'bg-slate-900 text-white shadow-sm'
                   : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-                }`}
+              }`}
             >
               {filter === 'All' ? 'All Stock' : filter === 'Low' ? 'Low Stock Alerts' : 'Out of Stock'}
             </button>
@@ -185,79 +179,53 @@ export const StockInventoryPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table - S.No, Code, Medicine Name, Quantity, Stock Status */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead className="bg-slate-50/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
               <tr>
+                <th className="p-4">S.No</th>
                 <th className="p-4">Code</th>
-                <th className="p-4">Medicine Name & Brand</th>
-                <th className="p-4">Category</th>
-                <th className="p-4">Rack Location</th>
-                <th className="p-4">Current Stock</th>
-                <th className="p-4">Min Stock</th>
-                <th className="p-4">Max Stock</th>
-                <th className="p-4">Reorder Level</th>
+                <th className="p-4">Medicine Name</th>
+                <th className="p-4">Quantity</th>
                 <th className="p-4">Stock Status</th>
-                <th className="p-4 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 bg-white">
-              {filteredMedicines.map((m) => (
+              {filteredMedicines.map((m, idx) => (
                 <tr
                   key={m.id}
-                  className={`transition-colors ${m.currentStock <= m.minStock ? 'bg-amber-50/30 hover:bg-amber-50' : 'hover:bg-slate-50/80'
-                    }`}
+                  className={`transition-colors ${
+                    m.currentStock === 0
+                      ? 'bg-rose-50/30 hover:bg-rose-50'
+                      : m.currentStock <= m.minStock
+                      ? 'bg-amber-50/30 hover:bg-amber-50'
+                      : 'hover:bg-slate-50/80'
+                  }`}
                 >
+                  <td className="p-4 font-bold text-slate-400">{idx + 1}</td>
                   <td className="p-4 font-extrabold text-emerald-700">{m.code}</td>
+                  <td className="p-4 font-bold text-slate-900 text-xs">{m.name}</td>
                   <td className="p-4">
-                    <p className="font-bold text-slate-900 text-xs">{m.name}</p>
-                    <p className="text-[10px] text-slate-400">{m.brand}</p>
-                  </td>
-                  <td className="p-4">
-                    <span className="bg-slate-100 text-slate-700 px-2.5 py-0.5 rounded-full text-[10px] font-bold">
-                      {m.category}
-                    </span>
-                  </td>
-                  <td className="p-4 font-bold text-indigo-700">{m.rackLocation}</td>
-                  <td className="p-4">
-                    <span
-                      className={`font-black text-sm px-3 py-1 rounded-full ${m.currentStock === 0
-                          ? 'bg-rose-600 text-white'
-                          : m.currentStock <= m.minStock
-                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                            : 'bg-emerald-100 text-emerald-800'
-                        }`}
-                    >
+                    <span className="font-black text-sm text-slate-900">
                       {m.currentStock} Units
                     </span>
                   </td>
-                  <td className="p-4 text-slate-600 font-semibold">{m.minStock}</td>
-                  <td className="p-4 text-slate-600 font-semibold">{m.maxStock}</td>
-                  <td className="p-4 text-slate-600 font-semibold">{m.reorderLevel}</td>
                   <td className="p-4">
                     {m.currentStock === 0 ? (
-                      <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 px-2.5 py-1 rounded-full">
+                      <span className="text-[10px] font-extrabold text-rose-700 bg-rose-100 border border-rose-200 px-2.5 py-1 rounded-full">
                         OUT OF STOCK
                       </span>
                     ) : m.currentStock <= m.minStock ? (
-                      <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full">
-                        LOW STOCK ALERT
+                      <span className="text-[10px] font-extrabold text-amber-800 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-full">
+                        LOW STOCK
                       </span>
                     ) : (
-                      <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded-full">
-                        ADEQUATE
+                      <span className="text-[10px] font-extrabold text-emerald-800 bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-full">
+                        AVAILABLE
                       </span>
                     )}
-                  </td>
-                  <td className="p-4 text-center">
-                    <button
-                      onClick={() => handleOpenAdjustment(m)}
-                      className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer flex items-center gap-1 mx-auto"
-                    >
-                      <Edit3 className="w-3.5 h-3.5 text-slate-600" /> Adjust Stock
-                    </button>
                   </td>
                 </tr>
               ))}

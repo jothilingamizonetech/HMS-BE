@@ -102,11 +102,8 @@ import { MedicineListPage } from './pages/pharmacy/medicine/MedicineListPage';
 import { MedicineCategoriesPage } from './pages/pharmacy/medicine/MedicineCategoriesPage';
 import { DirectSalesPOSPage } from './pages/pharmacy/pos/DirectSalesPOSPage';
 import { PrescriptionDispensingPage } from './pages/pharmacy/prescription/PrescriptionDispensingPage';
-import { PurchaseEntryPage } from './pages/pharmacy/purchase/PurchaseEntryPage';
-import { PurchaseHistoryPage } from './pages/pharmacy/purchase/PurchaseHistoryPage';
 import { PharmacyReportsPage } from './pages/pharmacy/reports/PharmacyReportsPage';
 import { CustomerReturnsPage } from './pages/pharmacy/returns/CustomerReturnsPage';
-import { SupplierReturnsPage } from './pages/pharmacy/returns/SupplierReturnsPage';
 import { StockInventoryPage } from './pages/pharmacy/stock/StockInventoryPage';
 import { PharmacyLeavePage } from './pages/pharmacy/PharmacyLeavePage';
 
@@ -266,10 +263,7 @@ export default function App() {
                       <Route path="batch/expiry" element={<ExpiryTrackingPage />} />
                       <Route path="stock" element={<StockInventoryPage />} />
                       <Route path="stock/inventory" element={<StockInventoryPage />} />
-                      <Route path="purchase/entry" element={<PurchaseEntryPage />} />
-                      <Route path="purchase/history" element={<PurchaseHistoryPage />} />
                       <Route path="returns/customer" element={<CustomerReturnsPage />} />
-                      <Route path="returns/supplier" element={<SupplierReturnsPage />} />
                       <Route path="reports" element={<PharmacyReportsPage />} />
                       <Route path="leave" element={<PharmacyLeavePage />} />
                       <Route path="shift-roster" element={<StaffShiftRosterPage portalRole="pharmacy" />} />

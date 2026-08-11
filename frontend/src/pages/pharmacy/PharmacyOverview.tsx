@@ -95,7 +95,7 @@ export const PharmacyOverview: React.FC = () => {
 
   const dynamicActivities = React.useMemo(() => {
     const list: { id: string; type: string; title: string; time: string; user: string }[] = [];
-    safeInvoices.slice(0, 3).forEach((inv) => {
+    safeInvoices.slice(0, 4).forEach((inv) => {
       const invTotal = inv?.totalAmount || inv?.grandTotal || 0;
       list.push({
         id: `inv-${inv?.id || Math.random()}`,
@@ -105,17 +105,8 @@ export const PharmacyOverview: React.FC = () => {
         user: inv?.billerName || 'Pharmacy Staff',
       });
     });
-    safePurchases.slice(0, 2).forEach((pur) => {
-      list.push({
-        id: `pur-${pur?.id || Math.random()}`,
-        type: 'Stock Purchase',
-        title: `Purchase Entry ${pur?.invoiceNumber || ''} received from ${pur?.supplierName || (pur as any)?.supplier || 'Supplier'}`,
-        time: pur?.purchaseDate || 'Today',
-        user: 'Inventory Mgr',
-      });
-    });
     return list;
-  }, [safeInvoices, safePurchases]);
+  }, [safeInvoices]);
 
   return (
     <div className="space-y-6 animate-fade-in font-sans">
@@ -160,12 +151,6 @@ export const PharmacyOverview: React.FC = () => {
             className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap"
           >
             <ShoppingCart className="w-4 h-4" /> Open POS Console
-          </button>
-          <button
-            onClick={() => navigate('/pharmacy/purchase/entry')}
-            className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 transition-all cursor-pointer flex items-center gap-2 whitespace-nowrap"
-          >
-            <Plus className="w-4 h-4" /> New Purchase Entry
           </button>
         </div>
       </div>
@@ -237,7 +222,7 @@ export const PharmacyOverview: React.FC = () => {
               Quarantined
             </span>
           </div>
-          <p className="text-[10px] text-slate-400">Requires supplier return</p>
+          <p className="text-[10px] text-slate-400">Expired batch stock</p>
         </div>
 
         {/* Card 5: Today's Sales */}

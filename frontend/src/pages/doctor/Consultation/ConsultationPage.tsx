@@ -244,7 +244,12 @@ const ConsultationSection: React.FC<{ label: string; children: React.ReactNode; 
   </div>
 );
 
-const PrescriptionTable: React.FC<{ medicines: Medicine[]; onRemove?: (id: string) => void; isEditable?: boolean }> = ({ medicines, onRemove, isEditable = true }) => {
+const PrescriptionTable: React.FC<{
+  medicines: Medicine[];
+  onRemove?: (id: string) => void;
+  onEdit?: (med: Medicine) => void;
+  isEditable?: boolean;
+}> = ({ medicines, onRemove, onEdit, isEditable = true }) => {
   if (medicines.length === 0) {
     return (
       <div className="text-center py-6 text-xs text-slate-400 border border-dashed border-slate-200 rounded-xl">
@@ -283,12 +288,24 @@ const PrescriptionTable: React.FC<{ medicines: Medicine[]; onRemove?: (id: strin
               <td className="p-3 text-slate-600">{med.instructions || '—'}</td>
               {isEditable && (
                 <td className="p-3 text-right">
-                  <button
-                    onClick={() => onRemove?.(med.id)}
-                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center justify-end gap-1">
+                    {onEdit && (
+                      <button
+                        onClick={() => onEdit(med)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                        title="Edit Medicine"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                    <button
+                      onClick={() => onRemove?.(med.id)}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                      title="Delete Medicine"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </td>
               )}
             </tr>
@@ -404,6 +421,7 @@ export const ConsultationPage: React.FC = () => {
   const [medFreq, setMedFreq] = useState('Once Daily (OD)');
   const [medDuration, setMedDuration] = useState('5 Days');
   const [medInstructions, setMedInstructions] = useState('');
+  const [editingMedId, setEditingMedId] = useState<string | null>(null);
   const [diagSearch, setDiagSearch] = useState('');
   const [selectedLabTest, setSelectedLabTest] = useState('');
   const [selectedRadTest, setSelectedRadTest] = useState('');
@@ -839,19 +857,47 @@ export const ConsultationPage: React.FC = () => {
 
   const handleAddMedicine = () => {
     if (!medName.trim() || !isEditing) return;
-    const med: Medicine = {
-      id: `med-${Date.now()}`,
-      name: medName,
-      dosage: medDosage || '1 tablet',
-      frequency: medFreq,
-      duration: medDuration,
-      instructions: medInstructions || 'After meals',
-      route: 'Oral',
-    };
-    setMedicines((prev) => [...prev, med]);
+    if (editingMedId) {
+      setMedicines((prev) =>
+        prev.map((m) =>
+          m.id === editingMedId
+            ? {
+                ...m,
+                name: medName,
+                dosage: medDosage || '1 tablet',
+                frequency: medFreq,
+                duration: medDuration,
+                instructions: medInstructions || 'After meals',
+              }
+            : m
+        )
+      );
+      setEditingMedId(null);
+    } else {
+      const med: Medicine = {
+        id: `med-${Date.now()}`,
+        name: medName,
+        dosage: medDosage || '1 tablet',
+        frequency: medFreq,
+        duration: medDuration,
+        instructions: medInstructions || 'After meals',
+        route: 'Oral',
+      };
+      setMedicines((prev) => [...prev, med]);
+    }
     setMedName('');
     setMedDosage('');
     setMedInstructions('');
+  };
+
+  const handleEditMedicine = (med: Medicine) => {
+    if (!isEditing) return;
+    setEditingMedId(med.id);
+    setMedName(med.name);
+    setMedDosage(med.dosage);
+    setMedFreq(med.frequency);
+    setMedDuration(med.duration);
+    setMedInstructions(med.instructions || '');
   };
 
   const handleAddDiagnosis = (code: string, name: string) => {
@@ -1717,16 +1763,41 @@ export const ConsultationPage: React.FC = () => {
                   />
                 </div>
               </div>
-              <button
-                onClick={handleAddMedicine}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 cursor-pointer transition-colors"
-              >
-                <Plus className="w-3.5 h-3.5" /> Add Medicine
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleAddMedicine}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 hover:bg-blue-100 cursor-pointer transition-colors"
+                >
+                  {editingMedId ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" /> Update Medicine
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" /> Add Medicine
+                    </>
+                  )}
+                </button>
+                {editingMedId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingMedId(null);
+                      setMedName('');
+                      setMedDosage('');
+                      setMedInstructions('');
+                    }}
+                    className="px-3 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 cursor-pointer"
+                  >
+                    Cancel Edit
+                  </button>
+                )}
+              </div>
               <PrescriptionTable
                 medicines={medicines}
                 onRemove={(id) => setMedicines((prev) => prev.filter((m) => m.id !== id))}
-                isEditable={true}
+                onEdit={handleEditMedicine}
+                isEditable={isEditing}
               />
             </div>
           </ConsultationSection>

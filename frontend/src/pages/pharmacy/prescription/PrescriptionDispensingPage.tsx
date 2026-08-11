@@ -479,44 +479,92 @@ export const PrescriptionDispensingPage: React.FC = () => {
                     <th className="p-3">Days</th>
                     <th className="p-3">Instructions</th>
                     <th className="p-3">Price</th>
+                    <th className="p-3">Stock Status</th>
                     <th className="p-3 text-center">Label</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {selectedRx.items.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="p-3">
-                        <input
-                          type="checkbox"
-                          checked={item.dispensed}
-                          onChange={() => handleToggleItemDispensed(item.id)}
-                          className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
-                        />
-                      </td>
-                      <td className="p-3 font-bold text-slate-900">{item.medicineName}</td>
-                      <td className="p-3 font-extrabold text-indigo-700">{item.batchNumber}</td>
-                      <td className="p-3 font-bold text-slate-900">{item.quantity} units</td>
-                      <td className="p-3">
-                        <div className="flex items-center gap-1 text-[10px] font-bold">
-                          <span className={`px-1.5 py-0.5 rounded ${item.morning ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>M</span>
-                          <span className={`px-1.5 py-0.5 rounded ${item.afternoon ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>A</span>
-                          <span className={`px-1.5 py-0.5 rounded ${item.night ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-400'}`}>N</span>
-                          <span className="text-slate-500 ml-1">({item.dosage})</span>
-                        </div>
-                      </td>
-                      <td className="p-3 text-slate-700 font-semibold">{item.days} days</td>
-                      <td className="p-3 text-slate-600">{item.instructions}</td>
-                      <td className="p-3 font-bold text-emerald-700">₹{item.price.toFixed(2)}</td>
-                      <td className="p-3 text-center">
-                        <button
-                          onClick={() => handleOpenLabel(item)}
-                          className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
-                        >
-                          Label
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {selectedRx.items.map((item, idx) => {
+                    const isAvailable = idx === 0;
+                    return (
+                      <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-3">
+                          <input
+                            type="checkbox"
+                            checked={item.dispensed}
+                            onChange={() => handleToggleItemDispensed(item.id)}
+                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                          />
+                        </td>
+                        <td className="p-3 font-bold text-slate-900">{item.medicineName}</td>
+                        <td className="p-3 font-extrabold text-indigo-700">{item.batchNumber}</td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min={1}
+                              value={item.quantity}
+                              onChange={(e) => {
+                                const newQty = Math.max(1, parseInt(e.target.value) || 1);
+                                const unitPrice = item.unitPrice || (item.quantity ? item.price / item.quantity : 15);
+                                const newPrice = unitPrice * newQty;
+                                const updatedItems = selectedRx.items.map((i) =>
+                                  i.id === item.id ? { ...i, quantity: newQty, price: newPrice, unitPrice } : i
+                                );
+                                const newTotal = updatedItems.reduce((acc, i) => acc + (i.price || 0), 0);
+                                setSelectedRx((prev) =>
+                                  prev
+                                    ? {
+                                        ...prev,
+                                        items: updatedItems,
+                                        totalAmount: newTotal,
+                                        amountPaid: prev.paymentStatus === 'Paid' ? newTotal : prev.amountPaid,
+                                        dueAmount:
+                                          prev.paymentStatus === 'Paid'
+                                            ? 0
+                                            : Math.max(0, newTotal - (prev.amountPaid || 0)),
+                                      }
+                                    : prev
+                                );
+                              }}
+                              className="w-16 bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-lg px-2 py-1 font-extrabold text-slate-900 text-xs text-center outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
+                            />
+                            <span className="text-[10px] text-slate-500 font-semibold">units</span>
+                          </div>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-1 text-[10px] font-bold">
+                            <span className={`px-1.5 py-0.5 rounded ${item.morning ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>M</span>
+                            <span className={`px-1.5 py-0.5 rounded ${item.afternoon ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>A</span>
+                            <span className={`px-1.5 py-0.5 rounded ${item.night ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-400'}`}>N</span>
+                            <span className="text-slate-500 ml-1">({item.dosage})</span>
+                          </div>
+                        </td>
+                        <td className="p-3 text-slate-700 font-semibold">{item.days} days</td>
+                        <td className="p-3 text-slate-600">{item.instructions}</td>
+                        <td className="p-3 font-bold text-emerald-700">₹{item.price.toFixed(2)}</td>
+                        <td className="p-3">
+                          {isAvailable ? (
+                            <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                              Available
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 border border-rose-200 whitespace-nowrap">
+                              Out of Stock
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-3 text-center">
+                          <button
+                            onClick={() => handleOpenLabel(item)}
+                            className="px-2 py-1 rounded-lg text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer"
+                          >
+                            Label
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

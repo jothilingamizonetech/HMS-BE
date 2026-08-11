@@ -8,12 +8,9 @@ import {
   Boxes,
   ClockAlert,
   Warehouse,
-  ShoppingBag,
-  History,
   FileCheck2,
   ShoppingCart,
   RotateCcw,
-  Truck,
   BarChart3,
   ChevronDown,
   ChevronRight,
@@ -39,12 +36,6 @@ export const PharmacySidebar: React.FC<PharmacySidebarProps> = ({ mobileOpen, se
   );
   const [batchMgmtOpen, setBatchMgmtOpen] = useState(
     location.pathname.includes('/pharmacy/batch')
-  );
-  const [purchaseOpen, setPurchaseOpen] = useState(
-    location.pathname.includes('/pharmacy/purchase')
-  );
-  const [returnsOpen, setReturnsOpen] = useState(
-    location.pathname.includes('/pharmacy/returns')
   );
 
   const handleLogout = () => {
@@ -194,44 +185,6 @@ export const PharmacySidebar: React.FC<PharmacySidebarProps> = ({ mobileOpen, se
             <span>Stock & Inventory</span>
           </NavLink>
 
-          {/* Purchase Entry Menu Accordion */}
-          <div>
-            <button
-              onClick={() => setPurchaseOpen(!purchaseOpen)}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <ShoppingBag className="w-4 h-4 text-purple-600" />
-                <span>Purchase Entry</span>
-              </div>
-              {purchaseOpen ? (
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-              )}
-            </button>
-            {purchaseOpen && (
-              <div className="mt-1 space-y-0.5">
-                <NavLink
-                  to="/pharmacy/purchase/entry"
-                  onClick={() => setMobileOpen(false)}
-                  className={subNavItemClass}
-                >
-                  <ShoppingBag className="w-3.5 h-3.5" />
-                  <span>Supplier Purchase Entry</span>
-                </NavLink>
-                <NavLink
-                  to="/pharmacy/purchase/history"
-                  onClick={() => setMobileOpen(false)}
-                  className={subNavItemClass}
-                >
-                  <History className="w-3.5 h-3.5" />
-                  <span>Purchase History</span>
-                </NavLink>
-              </div>
-            )}
-          </div>
-
           {/* Prescription Dispensing */}
           <NavLink
             to="/pharmacy/prescription/list"
@@ -252,43 +205,15 @@ export const PharmacySidebar: React.FC<PharmacySidebarProps> = ({ mobileOpen, se
             <span>Direct Sales (POS)</span>
           </NavLink>
 
-          {/* Returns Menu Accordion */}
-          <div>
-            <button
-              onClick={() => setReturnsOpen(!returnsOpen)}
-              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <RotateCcw className="w-4 h-4 text-rose-600" />
-                <span>Returns Management</span>
-              </div>
-              {returnsOpen ? (
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              ) : (
-                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-              )}
-            </button>
-            {returnsOpen && (
-              <div className="mt-1 space-y-0.5">
-                <NavLink
-                  to="/pharmacy/returns/customer"
-                  onClick={() => setMobileOpen(false)}
-                  className={subNavItemClass}
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Customer Returns</span>
-                </NavLink>
-                <NavLink
-                  to="/pharmacy/returns/supplier"
-                  onClick={() => setMobileOpen(false)}
-                  className={subNavItemClass}
-                >
-                  <Truck className="w-3.5 h-3.5" />
-                  <span>Supplier Returns</span>
-                </NavLink>
-              </div>
-            )}
-          </div>
+          {/* Customer Returns */}
+          <NavLink
+            to="/pharmacy/returns/customer"
+            onClick={() => setMobileOpen(false)}
+            className={navItemClass}
+          >
+            <RotateCcw className="w-4 h-4 text-rose-600" />
+            <span>Customer Returns</span>
+          </NavLink>
 
           {/* Reports */}
           <NavLink

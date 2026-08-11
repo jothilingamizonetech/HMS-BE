@@ -494,6 +494,7 @@ export interface PrescriptionItem {
   days: number;
   instructions: string;
   price: number;
+  unitPrice?: number;
   dispensed: boolean;
 }
 
