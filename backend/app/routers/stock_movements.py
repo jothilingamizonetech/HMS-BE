@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.crud_utils import get_or_404, apply_updates, today_str
 from app.core.logging_utils import log_audit
@@ -45,6 +46,31 @@ def _stock_branch_filter(stmt, model, current_user: User, branch: str | None = N
             )
         )
     return stmt
+
+
+def _generate_unique_movement_number(db: Session, model, number_attr: str, prefix: str, requested_number: str | None = None) -> str:
+    year = datetime.now().year
+
+    if requested_number and requested_number.strip():
+        req = requested_number.strip()
+        existing = db.scalar(select(model).where(getattr(model, number_attr) == req))
+        if not existing:
+            return req
+
+    all_records = db.scalars(select(getattr(model, number_attr))).all()
+    max_num = 0
+    for code in all_records:
+        if code and "-" in code:
+            parts = code.split("-")
+            try:
+                num = int(parts[-1])
+                if num > max_num:
+                    max_num = num
+            except (IndexError, ValueError):
+                pass
+
+    next_num = max_num + 1
+    return f"{prefix}-{year}-{next_num:03d}"
 
 
 def _next_number(db: Session, model, prefix: str) -> str:
@@ -195,13 +221,21 @@ def create_stock_transfer(
     payload: StockTransferCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user), _perm=_perm_create
 ):
     data = payload.model_dump()
-    data["transfer_number"] = data.get("transfer_number") or _next_number(db, StockTransfer, "TRF")
+    data["transfer_number"] = _generate_unique_movement_number(db, StockTransfer, "transfer_number", "TRF", data.get("transfer_number"))
     data["transfer_date"] = data.get("transfer_date") or today_str()
     if not data.get("branch"):
         data["branch"] = current_user.branch
     record = StockTransfer(**data)
     db.add(record)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        data["transfer_number"] = _generate_unique_movement_number(db, StockTransfer, "transfer_number", "TRF", None)
+        record = StockTransfer(**data)
+        db.add(record)
+        db.commit()
+
     db.refresh(record)
     log_audit("POST /store/stock-transfer", payload, data, record, record)
     return record

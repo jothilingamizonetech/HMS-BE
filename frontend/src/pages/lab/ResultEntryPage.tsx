@@ -54,7 +54,7 @@ const AVAILABLE_TESTS_CATALOG = [
 ];
 
 export const ResultEntryPage: React.FC = () => {
-  const { labResults, labReports, saveLabResult, updateLabResult, updateLabReport } = useLab();
+  const { labResults, labReports, saveLabResult, updateLabResult, updateLabReport, createPatientOrderFromOPD } = useLab();
   const { addToast } = useHMS();
 
   // Search & Filters
@@ -112,23 +112,35 @@ export const ResultEntryPage: React.FC = () => {
       ).map((t: any, idx: number) => {
         const testName = typeof t === 'string' ? t : t.testName;
         const master = AVAILABLE_TESTS_CATALOG.find((m) => m.name.toLowerCase().trim() === testName.toLowerCase().trim());
+        const resultVal = typeof t === 'object' ? (t.resultValue || '') : '';
+        const isFilled = resultVal && resultVal.trim() !== '' && resultVal !== '(Pending)';
         return {
           id: typeof t === 'object' && t.id ? t.id : `res-${rep.id}-${idx}`,
           patientName: rep.patientName,
           patientUhid: rep.patientUhid,
           testName,
-          testCode: master?.code || 'LAB-001',
+          testCode: (typeof t === 'object' && t.testCode) || master?.code || 'LAB-001',
           sampleId,
-          resultValue: typeof t === 'object' ? (t.resultValue || '') : '',
+          resultValue: resultVal,
           unit: (typeof t === 'object' ? t.unit : master?.unit) || 'mg/dL',
           referenceRange: (typeof t === 'object' ? t.referenceRange : master?.range) || '70 - 140',
           flag: (typeof t === 'object' ? t.flag : 'Normal') || 'Normal',
           technician: rep.generatedBy || 'Lab Tech',
           verifiedBy: '',
           entryDate: rep.generatedDate,
-          status: 'Pending',
+          status: (typeof t === 'object' && t.status) ? t.status : (isFilled ? 'Completed' : 'Pending'),
         };
       });
+
+      const hasCriticalTest = tests.some((t) => t.flag === 'Critical' || t.status === 'Critical');
+      const allTestsFilled = tests.length > 0 && tests.every((t) => t.resultValue && t.resultValue.trim() !== '' && t.resultValue !== '(Pending)');
+      const isCompleted = rep.doctorReviewStatus === 'Approved' || allTestsFilled || (tests.length > 0 && tests.every((t) => t.status === 'Completed' || t.status === 'Verified'));
+
+      const computedStatus: ResultStatus = hasCriticalTest
+        ? 'Critical'
+        : isCompleted
+          ? 'Completed'
+          : 'Pending';
 
       mapBySample.set(sampleId, {
         id: `ord-${sampleId}`,
@@ -140,8 +152,8 @@ export const ResultEntryPage: React.FC = () => {
         doctorName: rep.doctorName || 'Doctor',
         department: rep.department || 'Pathology',
         orderDate: rep.generatedDate || new Date().toLocaleString(),
-        priority: 'Normal',
-        overallStatus: rep.doctorReviewStatus === 'Approved' ? 'Completed' : 'Pending',
+        priority: hasCriticalTest ? 'Emergency' : 'Normal',
+        overallStatus: computedStatus,
         tests,
       });
     });
@@ -156,7 +168,16 @@ export const ResultEntryPage: React.FC = () => {
         } else {
           existing.tests.push(res);
         }
+        const hasCritical = existing.tests.some((t) => t.flag === 'Critical' || t.status === 'Critical');
+        const allFilled = existing.tests.length > 0 && existing.tests.every((t) => t.resultValue && t.resultValue.trim() !== '' && t.resultValue !== '(Pending)');
+        if (hasCritical) {
+          existing.overallStatus = 'Critical';
+          existing.priority = 'Emergency';
+        } else if (allFilled || existing.tests.every((t) => t.status === 'Completed' || t.status === 'Verified')) {
+          existing.overallStatus = 'Completed';
+        }
       } else {
+        const isFilled = res.status === 'Completed' || res.status === 'Verified' || (res.resultValue && res.resultValue.trim() !== '' && res.resultValue !== '(Pending)');
         mapBySample.set(res.sampleId, {
           id: `ord-${res.sampleId}`,
           sampleId: res.sampleId,
@@ -168,7 +189,7 @@ export const ResultEntryPage: React.FC = () => {
           department: 'General Medicine',
           orderDate: res.entryDate || new Date().toLocaleString(),
           priority: res.flag === 'Critical' ? 'Emergency' : 'Normal',
-          overallStatus: res.status,
+          overallStatus: res.flag === 'Critical' ? 'Critical' : isFilled ? 'Completed' : 'Pending',
           tests: [res],
         });
       }
@@ -252,7 +273,7 @@ export const ResultEntryPage: React.FC = () => {
   };
 
   // Save Batch Test Results (supports both Partial Save / Draft & Complete Save)
-  const handleSaveBatchResults = (e: React.FormEvent, isPartialSave: boolean = false) => {
+  const handleSaveBatchResults = async (e: React.FormEvent, isPartialSave: boolean = false) => {
     e.preventDefault();
     if (!selectedOrder) return;
 
@@ -275,6 +296,9 @@ export const ResultEntryPage: React.FC = () => {
 
       const updatedItem: LabResultItem = {
         ...test,
+        patientName: selectedOrder.patientName,
+        patientUhid: selectedOrder.patientUhid,
+        sampleId: selectedOrder.sampleId,
         resultValue: formItem.resultValue,
         unit: formItem.unit,
         referenceRange: formItem.referenceRange,
@@ -290,7 +314,7 @@ export const ResultEntryPage: React.FC = () => {
       };
 
       // Sync with global LabContext silently (skipToast = true) to prevent multiple toast popups
-      if (test.id) {
+      if (test.id && !test.id.startsWith('res-rep-') && !test.id.startsWith('tr-')) {
         updateLabResult(test.id, updatedItem, true);
       } else {
         saveLabResult(updatedItem, true);
@@ -305,13 +329,28 @@ export const ResultEntryPage: React.FC = () => {
         ? 'Critical'
         : 'Completed';
 
+    // Update patientOrders state locally immediately so table shows updated status right away
+    setPatientOrders((prev) =>
+      prev.map((ord) =>
+        ord.id === selectedOrder.id || ord.sampleId === selectedOrder.sampleId
+          ? {
+              ...ord,
+              overallStatus: newOverallStatus,
+              priority: hasCritical ? 'Emergency' : ord.priority,
+              tests: updatedTests,
+            }
+          : ord
+      )
+    );
+
     // Sync with matching LabReport in labReports and backend DB
     const matchingRep = labReports.find(
       (r) => r.patientUhid.toLowerCase() === selectedOrder.patientUhid.toLowerCase() || r.patientName.toLowerCase() === selectedOrder.patientName.toLowerCase()
     );
     if (matchingRep) {
-      updateLabReport(matchingRep.id, {
+      await updateLabReport(matchingRep.id, {
         testResults: updatedTests,
+        status: newOverallStatus === 'Completed' ? 'Generated' : matchingRep.status,
       });
     }
 
@@ -344,8 +383,8 @@ export const ResultEntryPage: React.FC = () => {
     setIsCreateOrderModalOpen(true);
   };
 
-  // Submit New Patient Test Order
-  const handleCreateOrderSubmit = (e: React.FormEvent) => {
+  // Submit New Patient Test Order & Persist to DB
+  const handleCreateOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createOrderForm.patientName.trim()) {
       addToast('error', 'Validation Error', 'Patient Name is required.');
@@ -356,48 +395,21 @@ export const ResultEntryPage: React.FC = () => {
       return;
     }
 
-    const nextId = `ord-${Date.now()}`;
-    const nextSampleId = `SMP-2026-${Math.floor(100 + Math.random() * 900)}`;
+    try {
+      await createPatientOrderFromOPD(
+        createOrderForm.patientName,
+        createOrderForm.patientUhid,
+        Number(createOrderForm.age),
+        createOrderForm.gender,
+        createOrderForm.doctorName,
+        createOrderForm.department,
+        createOrderForm.selectedTestNames
+      );
 
-    const newTests: LabResultItem[] = createOrderForm.selectedTestNames.map((testName, i) => {
-      const match = AVAILABLE_TESTS_CATALOG.find((t) => t.name === testName);
-      return {
-        id: `res-${Date.now()}-${i}`,
-        patientName: createOrderForm.patientName,
-        patientUhid: createOrderForm.patientUhid,
-        testName,
-        testCode: match?.code || 'GEN-001',
-        sampleId: nextSampleId,
-        resultValue: '',
-        unit: match?.unit || '',
-        referenceRange: match?.range || '',
-        flag: 'Normal',
-        technician: 'Lab Technician',
-        verifiedBy: 'Pending',
-        entryDate: new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
-        status: 'Pending',
-        notes: '',
-      };
-    });
-
-    const newOrder: PatientOrder = {
-      id: nextId,
-      sampleId: nextSampleId,
-      patientName: createOrderForm.patientName,
-      patientUhid: createOrderForm.patientUhid,
-      age: Number(createOrderForm.age),
-      gender: createOrderForm.gender,
-      doctorName: createOrderForm.doctorName,
-      department: createOrderForm.department,
-      orderDate: new Date().toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }),
-      priority: createOrderForm.priority,
-      overallStatus: 'Pending',
-      tests: newTests,
-    };
-
-    setPatientOrders((prev) => [newOrder, ...prev]);
-    addToast('success', 'Patient Order Created', `New order ${nextSampleId} added for ${createOrderForm.patientName}.`);
-    setIsCreateOrderModalOpen(false);
+      setIsCreateOrderModalOpen(false);
+    } catch (err) {
+      console.error('Failed to create patient order:', err);
+    }
   };
 
   // Toggle test selection in Create Order Form

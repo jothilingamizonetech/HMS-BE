@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import select, or_, func
 from pydantic import BaseModel
 from typing import Optional, List, Any
@@ -412,7 +413,8 @@ def create_result(payload: LabResultIn, db: Session = Depends(get_db), current_u
                     changed = True
                 updated_tr.append(tr)
             if changed:
-                rep.test_results = updated_tr
+                rep.test_results = list(updated_tr)
+                flag_modified(rep, "test_results")
                 db.commit()
 
     return _camel(row)
@@ -444,7 +446,8 @@ def update_result(item_id: str, payload: LabResultUpdate, db: Session = Depends(
                         changed = True
                     updated_tr.append(tr)
                 if changed:
-                    rep.test_results = updated_tr
+                    rep.test_results = list(updated_tr)
+                    flag_modified(rep, "test_results")
                     db.commit()
 
     return _camel(row)
@@ -539,9 +542,29 @@ def create_report(payload: dict, db: Session = Depends(get_db), current_user: Us
     return _camel(row)
 
 
+def _get_report(db: Session, item_id: str) -> LabReport | None:
+    """Lookup LabReport by UUID primary key, report_number, patient_uhid, or patient_name."""
+    try:
+        row = db.get(LabReport, item_id)
+        if row:
+            return row
+    except Exception:
+        pass
+
+    clean_id = item_id.strip().lower()
+    stmt = select(LabReport).where(
+        or_(
+            func.lower(LabReport.report_number) == clean_id,
+            func.lower(LabReport.patient_uhid) == clean_id,
+            func.lower(LabReport.patient_name) == clean_id,
+        )
+    )
+    return db.scalar(stmt)
+
+
 @router.patch("/reports/{item_id}/status")
 def update_report_status(item_id: str, payload: ReportStatusUpdate, db: Session = Depends(get_db), _=_auth):
-    row = db.get(LabReport, item_id)
+    row = _get_report(db, item_id)
     if not row:
         raise HTTPException(404, "Report not found")
     row.status = payload.status
@@ -551,11 +574,12 @@ def update_report_status(item_id: str, payload: ReportStatusUpdate, db: Session 
 
 @router.put("/reports/{item_id}")
 def update_report(item_id: str, payload: dict, db: Session = Depends(get_db), _=_auth, _perm=_perm_edit):
-    row = db.get(LabReport, item_id)
+    row = _get_report(db, item_id)
     if not row:
         raise HTTPException(404, "Report not found")
     if "testResults" in payload:
         row.test_results = payload["testResults"]
+        flag_modified(row, "test_results")
     if "doctorComments" in payload:
         row.doctor_comments = payload["doctorComments"]
     if "status" in payload:
@@ -570,8 +594,9 @@ def update_report(item_id: str, payload: dict, db: Session = Depends(get_db), _=
 
 
 @router.patch("/reports/{item_id}/doctor-review")
+@router.patch("/reports/{item_id}/review")
 def doctor_review_report(item_id: str, payload: DoctorReviewIn, db: Session = Depends(get_db), _=_auth):
-    row = db.get(LabReport, item_id)
+    row = _get_report(db, item_id)
     if not row:
         raise HTTPException(404, "Report not found")
     row.doctor_review_status = payload.reviewStatus

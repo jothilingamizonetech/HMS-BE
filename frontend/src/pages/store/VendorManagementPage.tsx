@@ -346,11 +346,10 @@ export const VendorManagementPage: React.FC = () => {
                     </td>
                     <td className="py-3.5 px-4">
                       <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          v.status === 'Active'
+                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${v.status === 'Active'
                             ? 'bg-emerald-100 text-emerald-700'
                             : 'bg-slate-100 text-slate-600'
-                        }`}
+                          }`}
                       >
                         {v.status}
                       </span>

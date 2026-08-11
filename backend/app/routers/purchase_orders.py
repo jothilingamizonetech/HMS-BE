@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.exc import IntegrityError
 
 from app.core.crud_utils import get_or_404, today_str
 from app.core.logging_utils import log_audit
@@ -35,10 +36,29 @@ def _po_branch_filter(stmt, model, current_user: User, branch: str | None = None
     return stmt
 
 
-def _next_po_number(db: Session) -> str:
+def _generate_unique_po_number(db: Session, requested_po_number: str | None = None) -> str:
     year = datetime.now().year
-    count = db.query(PurchaseOrder).count() + 1
-    return f"PO-{year}-{1000 + count}"
+
+    if requested_po_number and requested_po_number.strip():
+        req = requested_po_number.strip()
+        existing = db.scalar(select(PurchaseOrder).where(PurchaseOrder.po_number == req))
+        if not existing:
+            return req
+
+    all_pos = db.scalars(select(PurchaseOrder.po_number)).all()
+    max_num = 0
+    for code in all_pos:
+        if code and "-" in code:
+            parts = code.split("-")
+            try:
+                num = int(parts[-1])
+                if num > max_num:
+                    max_num = num
+            except (IndexError, ValueError):
+                pass
+
+    next_num = max_num + 1
+    return f"PO-{year}-{next_num:03d}"
 
 
 def _compute_totals(items: list[POItem]) -> dict:
@@ -79,7 +99,7 @@ def create_purchase_order(
     data = payload.model_dump(exclude={"items"})
     if not data.get("branch"):
         data["branch"] = current_user.branch
-    data["po_number"] = data.get("po_number") or _next_po_number(db)
+    data["po_number"] = _generate_unique_po_number(db, data.get("po_number"))
     data["created_date"] = data.get("created_date") or today_str()
 
     po_items = []
@@ -90,7 +110,15 @@ def create_purchase_order(
     totals = _compute_totals(po_items)
     po = PurchaseOrder(**data, **totals, items=po_items)
     db.add(po)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        data["po_number"] = _generate_unique_po_number(db, None)
+        po = PurchaseOrder(**data, **totals, items=po_items)
+        db.add(po)
+        db.commit()
+
     db.refresh(po)
     log_audit("POST /store/purchase-orders", payload, data, po, po)
     notify_user_or_role(

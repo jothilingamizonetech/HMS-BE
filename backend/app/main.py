@@ -83,6 +83,47 @@ async def lifespan(app: FastAPI):
             ]:
                 conn.execute(sa.text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS branch VARCHAR(200)"))
 
+            # Auto-patch stock movement table columns
+            for col_name, col_type in [
+                ('batch_number', 'VARCHAR(100)'),
+                ('from_location', 'VARCHAR(150)'),
+                ('to_location', 'VARCHAR(150)'),
+                ('requested_by', 'VARCHAR(150)'),
+                ('transfer_date', 'VARCHAR(20)'),
+                ('date', 'VARCHAR(20)'),
+            ]:
+                conn.execute(sa.text(f"ALTER TABLE stock_transfer ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+
+            for col_name, col_type in [
+                ('supplier_name', 'VARCHAR(200)'),
+                ('received_by', 'VARCHAR(150)'),
+                ('batch_number', 'VARCHAR(100)'),
+                ('expiry_date', 'VARCHAR(20)'),
+                ('supplier', 'VARCHAR(200)'),
+                ('warehouse', 'VARCHAR(150)'),
+            ]:
+                conn.execute(sa.text(f"ALTER TABLE stock_inward ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+
+            for col_name, col_type in [
+                ('issued_to_department', 'VARCHAR(150)'),
+                ('ward', 'VARCHAR(150)'),
+                ('lab', 'VARCHAR(150)'),
+                ('pharmacy', 'VARCHAR(150)'),
+                ('operation_theatre', 'VARCHAR(150)'),
+                ('doctor', 'VARCHAR(150)'),
+                ('issued_to_person', 'VARCHAR(150)'),
+                ('batch_number', 'VARCHAR(100)'),
+                ('issued_by', 'VARCHAR(150)'),
+                ('reason', 'TEXT'),
+            ]:
+                conn.execute(sa.text(f"ALTER TABLE stock_outward ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+
+            for col_name, col_type in [
+                ('approved_by', 'VARCHAR(150)'),
+                ('reason', 'TEXT'),
+            ]:
+                conn.execute(sa.text(f"ALTER TABLE stock_adjustment ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+
 
 
             conn.execute(sa.text("ALTER TABLE working_hours ALTER COLUMN day_of_week TYPE VARCHAR(200)"))

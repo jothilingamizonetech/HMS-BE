@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.exc import IntegrityError
 
 from app.core.crud_utils import get_or_404, apply_updates, today_str
 from app.core.logging_utils import log_audit
@@ -20,10 +21,29 @@ _perm_edit = Depends(require_permission("Inventory & Store", "Edit"))
 _perm_delete = Depends(require_permission("Inventory & Store", "Delete"))
 
 
-def _next_grn_number(db: Session) -> str:
+def _generate_unique_grn_number(db: Session, requested_grn_number: str | None = None) -> str:
     year = datetime.now().year
-    count = db.query(GoodsReceipt).count() + 1
-    return f"GRN-{year}-{1000 + count}"
+
+    if requested_grn_number and requested_grn_number.strip():
+        req = requested_grn_number.strip()
+        existing = db.scalar(select(GoodsReceipt).where(GoodsReceipt.grn_number == req))
+        if not existing:
+            return req
+
+    all_grns = db.scalars(select(GoodsReceipt.grn_number)).all()
+    max_num = 0
+    for code in all_grns:
+        if code and "-" in code:
+            parts = code.split("-")
+            try:
+                num = int(parts[-1])
+                if num > max_num:
+                    max_num = num
+            except (IndexError, ValueError):
+                pass
+
+    next_num = max_num + 1
+    return f"GRN-{year}-{next_num:03d}"
 
 
 @router.get("", response_model=list[GoodsReceiptOut])
@@ -35,7 +55,7 @@ def list_grns(db: Session = Depends(get_db), _=Depends(get_current_active_user))
 @router.post("", response_model=GoodsReceiptOut, status_code=status.HTTP_201_CREATED)
 def create_grn(payload: GoodsReceiptCreate, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
     data = payload.model_dump(exclude={"items"})
-    data["grn_number"] = data.get("grn_number") or _next_grn_number(db)
+    data["grn_number"] = _generate_unique_grn_number(db, data.get("grn_number"))
 
     grn_items = [GRNItem(**line.model_dump()) for line in payload.items]
     grn = GoodsReceipt(**data, items=grn_items)
@@ -55,7 +75,15 @@ def create_grn(payload: GoodsReceiptCreate, db: Session = Depends(get_db), _=Dep
         if po and po.status == "Approved":
             po.status = "Fulfilled"
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        data["grn_number"] = _generate_unique_grn_number(db, None)
+        grn = GoodsReceipt(**data, items=grn_items)
+        db.add(grn)
+        db.commit()
+
     db.refresh(grn)
     log_audit("POST /store/goods-receipts", payload, data, grn, grn)
     notify_user_or_role(

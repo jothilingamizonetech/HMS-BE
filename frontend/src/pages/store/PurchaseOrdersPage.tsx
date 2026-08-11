@@ -198,6 +198,21 @@ export const PurchaseOrdersPage: React.FC = () => {
     }
   };
 
+  const getNextPONumber = (pos: PurchaseOrder[]) => {
+    let maxNum = 0;
+    const currentYear = new Date().getFullYear();
+    pos.forEach((p) => {
+      if (p.poNumber) {
+        const parts = p.poNumber.split('-');
+        const num = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    });
+    return `PO-${currentYear}-${String(maxNum + 1).padStart(3, '0')}`;
+  };
+
   // Submit PO
   const handleSavePO = async (asDraft: boolean) => {
     const vendor = vendors.find((v) => v.id === selectedVendorId) || { id: selectedVendorId, vendorName: 'General Vendor' };
@@ -217,7 +232,7 @@ export const PurchaseOrdersPage: React.FC = () => {
       };
       await updatePurchaseOrder(selectedPO.id, updatedData);
     } else {
-      const poNum = `PO-2026-${String(purchaseOrders.length + 1).padStart(3, '0')}`;
+      const poNum = getNextPONumber(purchaseOrders);
       const newPO: Omit<PurchaseOrder, 'id'> = {
         poNumber: poNum,
         vendorId: vendor.id,
