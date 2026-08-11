@@ -1,10 +1,63 @@
 export type ItemCategory =
+  | 'Antibiotics'
+  | 'Pain Management'
+  | 'Cardiovascular'
+  | 'Diabetes'
+  | 'Respiratory'
+  | 'Gastrointestinal'
+  | 'Allergy'
+  | 'Antifungal'
+  | 'Antiviral'
+  | 'Vitamins & Supplements'
+  | 'Vaccines'
+  | 'Emergency Medicines'
+  | 'IV Fluids'
+  | 'Topical Medicines'
+  | 'Steroids'
   | 'Pharmaceuticals'
   | 'Surgical Supplies'
-  | 'Consumables'
+  | 'Laboratory Supplies'
   | 'Lab Reagents'
   | 'Medical Equipment'
-  | 'General Store';
+  | 'PPE & Safety'
+  | 'Cleaning Supplies'
+  | 'Office & Stationery'
+  | 'Patient Care Supplies'
+  | 'Consumables'
+  | 'General Store'
+  | string;
+
+export const MEDICINE_CATEGORIES: string[] = [
+  'Antibiotics',
+  'Pain Management',
+  'Cardiovascular',
+  'Diabetes',
+  'Respiratory',
+  'Gastrointestinal',
+  'Allergy',
+  'Antifungal',
+  'Antiviral',
+  'Vitamins & Supplements',
+  'Vaccines',
+  'Emergency Medicines',
+  'IV Fluids',
+  'Topical Medicines',
+  'Steroids',
+  'Pharmaceuticals',
+];
+
+export const OTHER_HOSPITAL_CATEGORIES: string[] = [
+  'Surgical Supplies',
+  'Laboratory Supplies',
+  'Lab Reagents',
+  'Medical Equipment',
+  'PPE & Safety',
+  'Cleaning Supplies',
+  'Office & Stationery',
+  'Patient Care Supplies',
+  'Consumables',
+  'General Store',
+];
 
 export type ItemUnit = 'Box' | 'Strip' | 'Bottle' | 'Vial' | 'Piece' | 'Pack' | 'Roll' | 'Set';
 
@@ -14,6 +67,9 @@ export interface ItemMaster {
   itemName: string;
   category: ItemCategory;
   subCategory: string;
+  genericComposition?: string; // e.g. Glimepiride + Metformin
+  strength?: string; // e.g. 2 mg + 500 mg
+  dosageForm?: string; // e.g. Tablet, Syrup, Injection
   unit: ItemUnit;
   packQuantity?: number; // e.g., 20 (20 items inside 1 Box/Strip)
   issueUnit?: string; // e.g., 'Piece', 'Tablet', 'Capsule', 'Vial'
@@ -54,6 +110,10 @@ export interface POItem {
   itemId: string;
   itemCode: string;
   itemName: string;
+  category?: string;
+  genericComposition?: string;
+  strength?: string;
+  dosageForm?: string;
   quantity: number;
   unitPrice: number;
   discount: number;
