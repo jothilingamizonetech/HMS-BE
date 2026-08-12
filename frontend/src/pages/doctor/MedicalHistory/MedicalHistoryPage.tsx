@@ -224,7 +224,7 @@ const StatusBadge: React.FC<{ status: string; dot?: boolean }> = ({ status, dot 
 export const MedicalHistoryPage: React.FC = () => {
   const { labReports, doctorReviewReport, createPatientOrderFromOPD } = useLab();
   const [patients, setPatients] = useState<IPDPatientRecord[]>(INITIAL_PATIENTS);
-
+  
   // View mode: 'list' (Full Screen Table) | 'details' (Full Screen 9-Section EMR)
   const [viewMode, setViewMode] = useState<'list' | 'details'>('list');
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
@@ -362,7 +362,7 @@ export const MedicalHistoryPage: React.FC = () => {
               ward: adm.ward || 'General Ward',
               roomNumber: adm.room_number || adm.roomNumber || '101',
               bedNumber: adm.bed_number || adm.bedNumber || 'BED-101',
-              admittingDoctor: adm.admitting_doctor || adm.attending_doctor_name || adm.doctor_name || adm.attendingDoctor || 'Dr. Jeeva',
+              admittingDoctor: adm.attending_doctor_name || adm.doctor_name || adm.admitting_doctor || adm.admittingDoctor || 'Dr. Jeeva',
               department: adm.department || 'General Medicine',
               admissionDiagnosis: adm.admission_diagnosis || adm.diagnosis || adm.reason || 'Acute Observation',
               admissionReason: adm.admission_reason || adm.reason || adm.admission_diagnosis || 'Acute Observation',
@@ -521,10 +521,10 @@ export const MedicalHistoryPage: React.FC = () => {
       prev.map((item) =>
         item.patientId === patient.patientId
           ? {
-            ...item,
-            clinicalInfo: { ...clinicalForm },
-            statusInfo: { ...item.statusInfo, lastUpdatedTime: new Date().toLocaleString() },
-          }
+              ...item,
+              clinicalInfo: { ...clinicalForm },
+              statusInfo: { ...item.statusInfo, lastUpdatedTime: new Date().toLocaleString() },
+            }
           : item
       )
     );
@@ -549,10 +549,10 @@ export const MedicalHistoryPage: React.FC = () => {
       prev.map((item) =>
         item.patientId === patient.patientId
           ? {
-            ...item,
-            vitals: updatedVitals,
-            statusInfo: { ...item.statusInfo, lastUpdatedTime: new Date().toLocaleString() },
-          }
+              ...item,
+              vitals: updatedVitals,
+              statusInfo: { ...item.statusInfo, lastUpdatedTime: new Date().toLocaleString() },
+            }
           : item
       )
     );
@@ -569,10 +569,10 @@ export const MedicalHistoryPage: React.FC = () => {
       prev.map((item) =>
         item.patientId === patient.patientId
           ? {
-            ...item,
-            diagnosis: { ...diagnosisForm },
-            statusInfo: { ...item.statusInfo, lastUpdatedTime: new Date().toLocaleString() },
-          }
+              ...item,
+              diagnosis: { ...diagnosisForm },
+              statusInfo: { ...item.statusInfo, lastUpdatedTime: new Date().toLocaleString() },
+            }
           : item
       )
     );
@@ -677,10 +677,10 @@ export const MedicalHistoryPage: React.FC = () => {
       prev.map((item) =>
         item.patientId === patient.patientId
           ? {
-            ...item,
-            orders: updatedOrders,
-            statusInfo: { ...item.statusInfo, lastUpdatedTime: new Date().toLocaleString() },
-          }
+              ...item,
+              orders: updatedOrders,
+              statusInfo: { ...item.statusInfo, lastUpdatedTime: new Date().toLocaleString() },
+            }
           : item
       )
     );
@@ -724,10 +724,10 @@ export const MedicalHistoryPage: React.FC = () => {
       prev.map((item) =>
         item.patientId === patient.patientId
           ? {
-            ...item,
-            dischargeSummary: updatedDischargeSummary,
-            statusInfo: updatedStatusInfo,
-          }
+              ...item,
+              dischargeSummary: updatedDischargeSummary,
+              statusInfo: updatedStatusInfo,
+            }
           : item
       )
     );
@@ -753,14 +753,14 @@ export const MedicalHistoryPage: React.FC = () => {
       prev.map((item) =>
         item.patientId === patient.patientId
           ? {
-            ...item,
-            dailyRounds: [round, ...item.dailyRounds],
-            statusInfo: {
-              ...item.statusInfo,
-              lastUpdatedBy: 'Dr. Vikram Malhotra',
-              lastUpdatedTime: new Date().toLocaleString(),
-            },
-          }
+              ...item,
+              dailyRounds: [round, ...item.dailyRounds],
+              statusInfo: {
+                ...item.statusInfo,
+                lastUpdatedBy: 'Dr. Vikram Malhotra',
+                lastUpdatedTime: new Date().toLocaleString(),
+              },
+            }
           : item
       )
     );
@@ -853,10 +853,11 @@ export const MedicalHistoryPage: React.FC = () => {
                 <button
                   key={status}
                   onClick={() => setStatusFilter(status)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${statusFilter === status
+                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                    statusFilter === status
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
                       : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                  }`}
                 >
                   <span>{status}</span>
                 </button>
@@ -880,10 +881,11 @@ export const MedicalHistoryPage: React.FC = () => {
             </div>
             <button
               onClick={() => setSelectedDateFilter(new Date().toISOString().split('T')[0])}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedDateFilter === new Date().toISOString().split('T')[0]
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                selectedDateFilter === new Date().toISOString().split('T')[0]
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-                }`}
+              }`}
             >
               Today
             </button>
@@ -1077,10 +1079,11 @@ export const MedicalHistoryPage: React.FC = () => {
               <button
                 key={sec.key}
                 onClick={() => setActiveSection(sec.key)}
-                className={`w-full text-left px-3.5 py-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 border ${isActive
+                className={`w-full text-left px-3.5 py-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-between gap-2.5 border ${
+                  isActive
                     ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/20 translate-x-0.5'
                     : 'bg-white text-slate-600 border-transparent hover:bg-slate-50 hover:text-slate-900 hover:border-slate-200'
-                  }`}
+                }`}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
                   <span className={`p-1.5 rounded-lg shrink-0 ${isActive ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
@@ -1916,8 +1919,9 @@ export const MedicalHistoryPage: React.FC = () => {
                         <div className="text-right">
                           <span className="font-bold text-slate-900 text-sm">{r.result} {r.unit}</span>
                           <div>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.status === 'Critical' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
-                              }`}>
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              r.status === 'Critical' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
                               {r.status}
                             </span>
                           </div>
@@ -2115,12 +2119,13 @@ export const MedicalHistoryPage: React.FC = () => {
                       {(['Under Treatment', 'ICU', 'Admitted', 'Discharged'] as const).map((st) => (
                         <label
                           key={st}
-                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border cursor-pointer font-bold text-xs transition-all ${dischargeForm.admissionStatus === st
+                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border cursor-pointer font-bold text-xs transition-all ${
+                            dischargeForm.admissionStatus === st
                               ? st === 'Discharged'
                                 ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
                                 : 'bg-blue-600 text-white border-blue-600 shadow-md'
                               : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
-                            }`}
+                          }`}
                         >
                           <input
                             type="radio"
@@ -2329,8 +2334,9 @@ export const MedicalHistoryPage: React.FC = () => {
                 <div>
                   <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Report Status</span>
                   <div className="mt-0.5">
-                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full ${popupStatus === 'Re-Test Requested' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'
-                      }`}>
+                    <span className={`inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                      popupStatus === 'Re-Test Requested' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'
+                    }`}>
                       <CheckCircle2 className="w-3 h-3" /> {popupStatus}
                     </span>
                   </div>
@@ -2406,8 +2412,9 @@ export const MedicalHistoryPage: React.FC = () => {
                   <div className="p-3 rounded-xl bg-white border border-purple-200/80 space-y-1">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-slate-400 uppercase">Saved Instruction</span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${popupStatus === 'Re-Test Requested' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'
-                        }`}>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        popupStatus === 'Re-Test Requested' ? 'bg-purple-100 text-purple-800' : 'bg-emerald-100 text-emerald-800'
+                      }`}>
                         {popupStatus}
                       </span>
                     </div>
