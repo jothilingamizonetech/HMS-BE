@@ -25,7 +25,7 @@ import { updatePrescriptionApi } from '../../../services/api';
 
 export const PrescriptionDispensingPage: React.FC = () => {
   const { addToast } = useHMS();
-  const { prescriptions: initialPrescriptions, refreshData } = usePharmacy();
+  const { prescriptions: initialPrescriptions, medicines, refreshData } = usePharmacy();
   const [prescriptions, setPrescriptions] = useState<PrescriptionOrder[]>(initialPrescriptions);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
@@ -57,17 +57,64 @@ export const PrescriptionDispensingPage: React.FC = () => {
     return matchesSearch && matchesStatus;
   });
 
+  const calculateRxItemTotals = (item: PrescriptionItem) => {
+    const itemNameClean = (item.medicineName || '').toLowerCase().trim();
+    const matchingMed = medicines.find((m) => {
+      if (item.medicineId && m.id === item.medicineId) return true;
+      const mName = (m.name || '').toLowerCase().trim();
+      const mCode = (m.code || '').toLowerCase().trim();
+      if (mName === itemNameClean || mCode === itemNameClean) return true;
+      if (itemNameClean && (mName.includes(itemNameClean) || itemNameClean.includes(mName))) return true;
+      return false;
+    });
+
+    const qty = Math.max(1, item.quantity || 1);
+    let unitPrice = item.unitPrice;
+    if (unitPrice === undefined || unitPrice <= 0) {
+      if (matchingMed?.sellingPrice && matchingMed.sellingPrice > 0) {
+        unitPrice = matchingMed.sellingPrice;
+      } else if (item.price && item.price > qty) {
+        unitPrice = item.price / qty;
+      } else {
+        unitPrice = item.price && item.price > 0 ? item.price : 15;
+      }
+    }
+
+    const subtotal = qty * unitPrice;
+    const gstPercent = matchingMed?.gst ?? (matchingMed as any)?.gst_percentage ?? (item as any).gst ?? 12;
+    const gstAmount = subtotal * (gstPercent / 100);
+    const totalWithGst = subtotal + gstAmount;
+
+    return {
+      matchingMed,
+      qty,
+      unitPrice,
+      subtotal,
+      gstPercent,
+      gstAmount,
+      totalWithGst,
+    };
+  };
+
   const calculateRxTotal = (rx: PrescriptionOrder) => {
-    return (rx?.items || []).reduce((acc, item) => acc + (item?.price || 0), 0);
+    return (rx?.items || []).reduce((acc, item) => {
+      const fin = calculateRxItemTotals(item);
+      return acc + fin.totalWithGst;
+    }, 0);
   };
 
   const handleOpenDispense = (rx: PrescriptionOrder) => {
     const cloned: PrescriptionOrder = JSON.parse(JSON.stringify(rx));
     const total = calculateRxTotal(cloned);
-    if (cloned.totalAmount === undefined) cloned.totalAmount = total;
-    if (cloned.paymentStatus === undefined) cloned.paymentStatus = 'Paid';
-    if (cloned.amountPaid === undefined) cloned.amountPaid = cloned.paymentStatus === 'Paid' ? total : 0;
-    if (cloned.dueAmount === undefined) cloned.dueAmount = total - (cloned.amountPaid || 0);
+    cloned.totalAmount = total;
+    if (cloned.paymentStatus === undefined || cloned.paymentStatus === 'Paid') {
+      cloned.paymentStatus = 'Paid';
+      cloned.amountPaid = total;
+      cloned.dueAmount = 0;
+    } else {
+      if (cloned.amountPaid === undefined) cloned.amountPaid = 0;
+      cloned.dueAmount = Math.max(0, total - (cloned.amountPaid || 0));
+    }
     if (cloned.paymentMethod === undefined) cloned.paymentMethod = 'Cash';
 
     setSelectedRx(cloned);
@@ -82,13 +129,51 @@ export const PrescriptionDispensingPage: React.FC = () => {
 
   const handleDispenseAll = () => {
     if (!selectedRx) return;
-    const updatedItems = selectedRx.items.map((i) => ({ ...i, dispensed: true }));
-    setSelectedRx((prev) => (prev ? { ...prev, status: 'Dispensed', items: updatedItems } : prev));
-    addToast('success', 'All Items Selected', 'All prescription medicines marked as dispensed.');
+    const outOfStockItems: string[] = [];
+    const updatedItems = selectedRx.items.map((i) => {
+      const fin = calculateRxItemTotals(i);
+      const currentStock = fin.matchingMed ? (fin.matchingMed.currentStock ?? fin.matchingMed.current_stock ?? 0) : 0;
+      if (currentStock < i.quantity) {
+        outOfStockItems.push(i.medicineName);
+        return { ...i, dispensed: false };
+      }
+      return { ...i, dispensed: true };
+    });
+
+    if (outOfStockItems.length > 0) {
+      addToast(
+        'warning',
+        'Stock Unavailable',
+        `Some items cannot be dispensed due to insufficient stock: ${outOfStockItems.join(', ')}`
+      );
+    } else {
+      addToast('success', 'All Available Items Selected', 'All in-stock prescription medicines marked as dispensed.');
+    }
+
+    const someDispensed = updatedItems.some((i) => i.dispensed);
+    const allDispensed = updatedItems.length > 0 && updatedItems.every((i) => i.dispensed);
+    const newStatus = allDispensed ? 'Dispensed' : someDispensed ? 'Partially Dispensed' : 'Verified';
+
+    setSelectedRx((prev) => (prev ? { ...prev, status: newStatus, items: updatedItems } : prev));
   };
 
   const handleToggleItemDispensed = (itemId: string) => {
     if (!selectedRx) return;
+    const targetItem = selectedRx.items.find((i) => i.id === itemId);
+
+    if (targetItem && !targetItem.dispensed) {
+      const fin = calculateRxItemTotals(targetItem);
+      const currentStock = fin.matchingMed ? (fin.matchingMed.currentStock ?? fin.matchingMed.current_stock ?? 0) : 0;
+      if (currentStock < targetItem.quantity) {
+        addToast(
+          'error',
+          'Cannot Dispense Item',
+          `Cannot dispense ${targetItem.medicineName}: Out of stock (${currentStock} in stock, ${targetItem.quantity} requested).`
+        );
+        return;
+      }
+    }
+
     const updatedItems = selectedRx.items.map((i) =>
       i.id === itemId ? { ...i, dispensed: !i.dispensed } : i
     );
@@ -106,17 +191,47 @@ export const PrescriptionDispensingPage: React.FC = () => {
   const handleSubmitDispensing = async () => {
     if (!selectedRx) return;
 
+    const dispensedItems = selectedRx.items.filter((i) => i.dispensed);
+    const totalBill = calculateRxTotal(selectedRx);
+
+    // 1. Strict Stock Availability Check
+    for (const item of dispensedItems) {
+      const fin = calculateRxItemTotals(item);
+      const currentStock = fin.matchingMed ? (fin.matchingMed.currentStock ?? fin.matchingMed.current_stock ?? 0) : 0;
+      if (currentStock < item.quantity) {
+        addToast(
+          'error',
+          'Dispensing Blocked — Out of Stock',
+          `Cannot dispense ${item.medicineName}: Required ${item.quantity} units, but only ${currentStock} available in inventory.`
+        );
+        return;
+      }
+    }
+
+    // 2. Strict Payment Balance Check (unless IPD Room Credit)
+    const isIpCredit =
+      selectedRx.paymentMethod === 'IPD Credit / Post Bill' ||
+      (selectedRx.paymentStatus as any) === 'IPD Credit / Post Bill';
+
+    if (dispensedItems.length > 0 && !isIpCredit) {
+      const paid = selectedRx.amountPaid ?? 0;
+      const due = Math.max(0, totalBill - paid);
+      if (due > 0.01) {
+        addToast(
+          'error',
+          'Dispensing Blocked — Payment Pending',
+          `Cannot dispense prescription with pending balance. Balance Due: ₹${due.toFixed(2)}. Please collect full payment (₹${totalBill.toFixed(2)}) or select IPD Room Credit.`
+        );
+        return;
+      }
+    }
+
     try {
-      // This is what actually deducts medicine stock for newly-dispensed
-      // items on the backend (see update_prescription in pharmacy.py) --
-      // this handler used to only update local component state and never
-      // called the API at all, so dispensing a prescription never
-      // persisted and never touched inventory.
       const updated = await updatePrescriptionApi(selectedRx.id, {
         status: selectedRx.status,
         items: selectedRx.items,
         paymentStatus: selectedRx.paymentStatus,
-        totalAmount: selectedRx.totalAmount,
+        totalAmount: totalBill,
         amountPaid: selectedRx.amountPaid,
         dueAmount: selectedRx.dueAmount,
         paymentMethod: selectedRx.paymentMethod,
@@ -124,6 +239,7 @@ export const PrescriptionDispensingPage: React.FC = () => {
       setPrescriptions((prev) =>
         prev.map((item) => (item.id === selectedRx.id ? { ...selectedRx, ...updated } : item))
       );
+      refreshData();
     } catch (err) {
       console.error('handleSubmitDispensing failed:', err);
       const message = err instanceof Error ? err.message : 'Could not save the dispensing to the server.';
@@ -133,14 +249,13 @@ export const PrescriptionDispensingPage: React.FC = () => {
 
     setDispenseModalOpen(false);
 
-    const total = calculateRxTotal(selectedRx);
-    const collected = selectedRx.amountPaid ?? total;
+    const collected = selectedRx.amountPaid ?? totalBill;
     const pStatus = selectedRx.paymentStatus || 'Paid';
 
     addToast(
       'success',
-      'Prescription Updated Successfully! 🎉',
-      `${selectedRx.prescriptionNumber} — Status: ${selectedRx.status} | Total: ₹${total.toFixed(2)} | Collected: ₹${collected.toFixed(2)} (${pStatus})`
+      'Prescription Dispensed & Saved! 🎉',
+      `${selectedRx.prescriptionNumber} — Status: ${selectedRx.status} | Total: ₹${totalBill.toFixed(2)} | Collected: ₹${collected.toFixed(2)} (${pStatus})`
     );
   };
 
@@ -390,7 +505,7 @@ export const PrescriptionDispensingPage: React.FC = () => {
                   <CreditCard className="w-4 h-4 text-purple-600" /> Payment & Billing Collection
                 </h4>
                 <div className="text-right">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Prescription Amount</span>
+                  <span className="text-[10px] font-bold text-slate-500 uppercase block">Total Prescription Amount (incl. GST)</span>
                   <span className="text-base font-black text-purple-700">₹{modalTotalBill.toFixed(2)}</span>
                 </div>
               </div>
@@ -447,7 +562,7 @@ export const PrescriptionDispensingPage: React.FC = () => {
                     type="number"
                     value={selectedRx.amountPaid ?? 0}
                     onChange={(e) => {
-                      const val = Number(e.target.value);
+                      const val = Math.max(0, Number(e.target.value) || 0);
                       const total = modalTotalBill;
                       const due = Math.max(0, total - val);
                       const pStatus = val >= total ? 'Paid' : val > 0 ? 'Partial' : 'Due';
@@ -460,7 +575,7 @@ export const PrescriptionDispensingPage: React.FC = () => {
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Balance Due (₹)</label>
                   <div className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-black text-rose-600 flex items-center">
-                    ₹{(selectedRx.dueAmount ?? 0).toFixed(2)}
+                    ₹{(selectedRx.dueAmount ?? Math.max(0, modalTotalBill - (selectedRx.amountPaid || 0))).toFixed(2)}
                   </div>
                 </div>
               </div>
@@ -477,27 +592,36 @@ export const PrescriptionDispensingPage: React.FC = () => {
                     <th className="p-3">Qty</th>
                     <th className="p-3">Dosage Schedule</th>
                     <th className="p-3">Days</th>
-                    <th className="p-3">Instructions</th>
-                    <th className="p-3">Price</th>
+                    <th className="p-3">Unit Price (₹)</th>
+                    <th className="p-3">Subtotal (Qty × Price)</th>
+                    <th className="p-3">GST</th>
+                    <th className="p-3">Total (+GST)</th>
                     <th className="p-3">Stock Status</th>
                     <th className="p-3 text-center">Label</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
-                  {selectedRx.items.map((item, idx) => {
-                    const isAvailable = idx === 0;
+                  {selectedRx.items.map((item) => {
+                    const fin = calculateRxItemTotals(item);
+                    const matchingMed = fin.matchingMed;
+                    const currentStock = matchingMed ? (matchingMed.currentStock ?? matchingMed.current_stock ?? 0) : 0;
+                    const isAvailable = currentStock >= item.quantity;
+                    const isLowStock = currentStock > 0 && currentStock < item.quantity;
+
                     return (
                       <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="p-3">
                           <input
                             type="checkbox"
                             checked={item.dispensed}
+                            disabled={!isAvailable}
                             onChange={() => handleToggleItemDispensed(item.id)}
-                            className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500 cursor-pointer"
+                            className={`w-4 h-4 rounded border-slate-300 ${!isAvailable ? 'opacity-40 cursor-not-allowed text-slate-300' : 'text-emerald-600 focus:ring-emerald-500 cursor-pointer'}`}
+                            title={!isAvailable ? 'Out of stock — cannot dispense' : 'Select to dispense'}
                           />
                         </td>
                         <td className="p-3 font-bold text-slate-900">{item.medicineName}</td>
-                        <td className="p-3 font-extrabold text-indigo-700">{item.batchNumber}</td>
+                        <td className="p-3 font-extrabold text-indigo-700">{item.batchNumber || 'STORE-BATCH'}</td>
                         <td className="p-3">
                           <div className="flex items-center gap-1">
                             <input
@@ -506,26 +630,19 @@ export const PrescriptionDispensingPage: React.FC = () => {
                               value={item.quantity}
                               onChange={(e) => {
                                 const newQty = Math.max(1, parseInt(e.target.value) || 1);
-                                const unitPrice = item.unitPrice || (item.quantity ? item.price / item.quantity : 15);
-                                const newPrice = unitPrice * newQty;
                                 const updatedItems = selectedRx.items.map((i) =>
-                                  i.id === item.id ? { ...i, quantity: newQty, price: newPrice, unitPrice } : i
+                                  i.id === item.id ? { ...i, quantity: newQty, price: fin.unitPrice * newQty, unitPrice: fin.unitPrice } : i
                                 );
-                                const newTotal = updatedItems.reduce((acc, i) => acc + (i.price || 0), 0);
-                                setSelectedRx((prev) =>
-                                  prev
-                                    ? {
-                                        ...prev,
-                                        items: updatedItems,
-                                        totalAmount: newTotal,
-                                        amountPaid: prev.paymentStatus === 'Paid' ? newTotal : prev.amountPaid,
-                                        dueAmount:
-                                          prev.paymentStatus === 'Paid'
-                                            ? 0
-                                            : Math.max(0, newTotal - (prev.amountPaid || 0)),
-                                      }
-                                    : prev
-                                );
+                                const newRx = { ...selectedRx, items: updatedItems };
+                                const newTotal = calculateRxTotal(newRx);
+                                const paid = selectedRx.paymentStatus === 'Paid' ? newTotal : (selectedRx.amountPaid || 0);
+                                const due = Math.max(0, newTotal - paid);
+                                setSelectedRx({
+                                  ...newRx,
+                                  totalAmount: newTotal,
+                                  amountPaid: paid,
+                                  dueAmount: due,
+                                });
                               }}
                               className="w-16 bg-slate-50 border border-slate-300 focus:border-emerald-500 rounded-lg px-2 py-1 font-extrabold text-slate-900 text-xs text-center outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500/20"
                             />
@@ -541,16 +658,25 @@ export const PrescriptionDispensingPage: React.FC = () => {
                           </div>
                         </td>
                         <td className="p-3 text-slate-700 font-semibold">{item.days} days</td>
-                        <td className="p-3 text-slate-600">{item.instructions}</td>
-                        <td className="p-3 font-bold text-emerald-700">₹{item.price.toFixed(2)}</td>
+                        <td className="p-3 font-semibold text-slate-700">₹{fin.unitPrice.toFixed(2)}</td>
+                        <td className="p-3 font-bold text-slate-900">₹{fin.subtotal.toFixed(2)}</td>
+                        <td className="p-3 text-xs">
+                          <span className="font-semibold text-slate-600">{fin.gstPercent}%</span>
+                          <span className="text-[10px] text-slate-400 block">+₹{fin.gstAmount.toFixed(2)}</span>
+                        </td>
+                        <td className="p-3 font-black text-emerald-700">₹{fin.totalWithGst.toFixed(2)}</td>
                         <td className="p-3">
                           {isAvailable ? (
                             <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap">
-                              Available
+                              Available ({currentStock} in stock)
+                            </span>
+                          ) : isLowStock ? (
+                            <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
+                              Low Stock ({currentStock} in stock)
                             </span>
                           ) : (
                             <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-rose-100 text-rose-800 border border-rose-200 whitespace-nowrap">
-                              Out of Stock
+                              Out of Stock (0 in stock)
                             </span>
                           )}
                         </td>

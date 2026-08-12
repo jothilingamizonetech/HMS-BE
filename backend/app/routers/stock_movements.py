@@ -10,10 +10,11 @@ from app.core.logging_utils import log_audit
 from app.core.database import get_db
 from app.deps import get_current_active_user, require_permission
 from app.models.user import User
-from app.models.stock_movement import StockInward, StockOutward, StockTransfer, StockAdjustment
+from app.models.stock_movement import StockInward, StockOutward, StockTransfer, StockAdjustment, TransferStatus
 from app.models.store_item import ItemMaster
 from app.schemas.stock_movement import (
     StockInwardCreate,
+    StockInwardUpdate,
     StockInwardOut,
     StockOutwardCreate,
     StockOutwardOut,
@@ -100,6 +101,12 @@ def create_stock_inward(
     data["date"] = data.get("date") or today_str()
     if not data.get("branch"):
         data["branch"] = current_user.branch
+
+    if data.get("inward_number"):
+        existing = db.scalar(select(StockInward).where(StockInward.inward_number == data["inward_number"]))
+        if existing:
+            return existing
+
     record = StockInward(**data)
     db.add(record)
 
@@ -116,6 +123,28 @@ def create_stock_inward(
         message=f"Stock Inward {getattr(record, 'inward_number', '')} logged for {record.item_name or 'item'} (qty: +{record.quantity}).",
         module="inventory", event_type="stock_inward", recipient_role="store", related_record_id=record.id
     )
+    return record
+
+
+@router.put("/stock-inward/{inward_id}", response_model=StockInwardOut)
+def update_stock_inward(
+    inward_id: str,
+    payload: StockInwardUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(get_current_active_user),
+    _perm=_perm_edit,
+):
+    record = get_or_404(db, StockInward, inward_id, "Stock inward")
+    old_qty = record.quantity
+    apply_updates(record, payload)
+    if payload.quantity is not None and record.item_id:
+        diff = payload.quantity - old_qty
+        item = db.get(ItemMaster, record.item_id)
+        if item:
+            item.current_stock += diff
+    db.commit()
+    db.refresh(record)
+    log_audit(f"PUT /store/stock-inward/{inward_id}", payload, payload.model_dump(exclude_unset=True), record, record)
     return record
 
 
@@ -136,31 +165,55 @@ def list_stock_outward(
 def create_stock_outward(
     payload: StockOutwardCreate, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user), _perm=_perm_create
 ):
+    from app.models.pharmacy import Medicine, PharmacyBatch
+
     data = payload.model_dump()
     data["date"] = data.get("date") or today_str()
+    if not data.get("issued_to_department") and data.get("department"):
+        data["issued_to_department"] = data["department"]
+    if not data.get("department") and data.get("issued_to_department"):
+        data["department"] = data["issued_to_department"]
     if not data.get("branch"):
         data["branch"] = current_user.branch
 
+    item = None
     if payload.item_id:
         item = db.get(ItemMaster, payload.item_id)
-        if item:
-            if item.current_stock < payload.quantity:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Insufficient stock for {item.item_name}: available {item.current_stock}, requested {payload.quantity}",
-                )
-            item.current_stock -= payload.quantity
+    if not item and payload.item_code:
+        item = db.scalar(select(ItemMaster).where(ItemMaster.item_code == payload.item_code))
+    if not item and payload.item_name:
+        item = db.scalar(select(ItemMaster).where(func.lower(ItemMaster.item_name) == payload.item_name.lower()))
 
+    if item:
+        data["item_id"] = item.id
+        if item.current_stock < payload.quantity:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Insufficient stock for {item.item_name}: available {item.current_stock}, requested {payload.quantity}",
+            )
+        item.current_stock -= payload.quantity
+
+    data["status"] = data.get("status") or "Pending Approval"
     record = StockOutward(**data)
     db.add(record)
     db.commit()
     db.refresh(record)
+
     log_audit("POST /store/stock-outward", payload, data, record, record)
-    notify_user_or_role(
-        db, title="Stock Outward Issued",
-        message=f"Stock Outward {getattr(record, 'outward_number', '')} issued for {record.item_name or 'item'} (qty: -{record.quantity}).",
-        module="inventory", event_type="stock_outward", recipient_role="store", related_record_id=record.id
-    )
+    try:
+        from app.services.notification_service import notify_user_or_role
+        notify_user_or_role(
+            db,
+            title="New Stock Dispatched from Store Manager",
+            message=f"Store Manager issued {record.quantity} units of {record.item_name} to Pharmacy. Pending Pharmacy Approval.",
+            module="Pharmacy",
+            event_type="stock_transfer_dispatched",
+            recipient_role="Pharmacy",
+            priority="high",
+            related_record_id=record.id,
+        )
+    except Exception:
+        pass
     return record
 
 
@@ -237,7 +290,20 @@ def create_stock_transfer(
         db.commit()
 
     db.refresh(record)
-    log_audit("POST /store/stock-transfer", payload, data, record, record)
+    log_audit("POST /store/stock-outward", payload, data, record, record)
+    try:
+        from app.services.notification_service import notify_user_or_role
+        notify_user_or_role(
+            db,
+            title="New Stock Dispatched from Store Manager",
+            message=f"Store Manager issued {record.quantity} units of {record.item_name} to Pharmacy.",
+            module="Pharmacy",
+            event_type="stock_transfer_dispatched",
+            recipient_role="Pharmacy",
+            priority="high",
+        )
+    except Exception as e:
+        pass
     return record
 
 
@@ -343,6 +409,223 @@ def delete_stock_adjustment(
             item.current_stock = record.current_quantity
     db.delete(record)
     db.commit()
+
+
+@router.get("/pharmacy-transfers")
+def list_pharmacy_transfers(
+    branch: str | None = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Returns all stock transfers / outward issues sent by the Store Manager to the Pharmacy.
+    Provides total products count, total quantities sent, detailed line items, and approval status.
+    """
+    outward_stmt = select(StockOutward).order_by(StockOutward.created_at.desc())
+    outward_records = db.scalars(outward_stmt).all()
+    pharmacy_outwards = [
+        r for r in outward_records
+        if (r.department and "pharmacy" in r.department.lower()) or (r.issued_to_department and "pharmacy" in r.issued_to_department.lower()) or True
+    ]
+
+    transfer_stmt = select(StockTransfer).order_by(StockTransfer.created_at.desc())
+    transfer_records = db.scalars(transfer_stmt).all()
+    pharmacy_transfers = [
+        r for r in transfer_records
+        if (r.destination and "pharmacy" in r.destination.lower()) or (r.to_location and "pharmacy" in r.to_location.lower())
+    ]
+
+    combined = []
+
+    for o in pharmacy_outwards:
+        status_val = getattr(o, "status", None) or "Pending Approval"
+        combined.append({
+            "id": o.id,
+            "transferNumber": o.outward_number or f"OUT-{o.id[:6]}",
+            "type": "Stock Outward Issue",
+            "itemCode": o.item_code,
+            "itemName": o.item_name,
+            "quantity": o.quantity,
+            "batchNumber": o.batch_number or "STORE-BATCH",
+            "sender": o.issued_by or "Store Manager",
+            "destination": o.department or "Pharmacy",
+            "date": o.date,
+            "status": status_val,
+            "createdAt": o.created_at.isoformat() if hasattr(o, "created_at") and o.created_at else o.date,
+        })
+
+    for t in pharmacy_transfers:
+        t_status = t.status.value if hasattr(t.status, "value") else str(t.status)
+        combined.append({
+            "id": t.id,
+            "transferNumber": t.transfer_number,
+            "type": "Stock Transfer",
+            "itemCode": t.item_code,
+            "itemName": t.item_name,
+            "quantity": t.quantity,
+            "batchNumber": t.batch_number or "STORE-BATCH",
+            "sender": t.requested_by or "Store Manager",
+            "destination": t.destination or "Pharmacy",
+            "date": t.transfer_date or t.date,
+            "status": "Approved" if t_status == "Completed" else "Pending Approval",
+            "createdAt": t.created_at.isoformat() if hasattr(t, "created_at") and t.created_at else t.transfer_date,
+        })
+
+    combined.sort(key=lambda x: str(x.get("createdAt", "")), reverse=True)
+
+    total_quantity_sent = sum(int(item.get("quantity") or 0) for item in combined)
+    total_products_sent = len(combined)
+    pending_count = sum(1 for item in combined if item["status"] == "Pending Approval")
+
+    return {
+        "transfers": combined,
+        "totalProductsSent": total_products_sent,
+        "totalQuantitySent": total_quantity_sent,
+        "pendingCount": pending_count,
+    }
+
+
+@router.post("/pharmacy-transfers/{transfer_id}/approve")
+def approve_pharmacy_transfer(
+    transfer_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """
+    Approves a store stock transfer/outward issue, stores approval status in DB,
+    and automatically adds the transferred stock into the Pharmacy Medicine inventory.
+    Sends notification to Pharmacy & Store Manager.
+    """
+    from app.models.pharmacy import Medicine, PharmacyBatch
+    from app.services.notification_service import notify_user_or_role
+    import random
+
+    transfer = db.get(StockTransfer, transfer_id)
+    outward = db.get(StockOutward, transfer_id) if not transfer else None
+
+    if transfer is not None:
+        item_name = transfer.item_name
+        item_code = transfer.item_code
+        quantity = transfer.quantity
+        batch_number = transfer.batch_number or f"STORE-BATCH-{transfer_id[:6]}"
+        sender = transfer.requested_by or "Store Manager"
+        branch = transfer.branch
+        transfer_ref = transfer.transfer_number
+        transfer.status = TransferStatus.Completed
+    elif outward is not None:
+        item_name = outward.item_name
+        item_code = outward.item_code
+        quantity = outward.quantity
+        batch_number = outward.batch_number or f"STORE-BATCH-{transfer_id[:6]}"
+        sender = outward.issued_by or "Store Manager"
+        branch = outward.branch
+        transfer_ref = outward.outward_number or transfer_id
+        setattr(outward, "status", "Approved")
+    else:
+        raise HTTPException(status_code=404, detail="Store transfer record not found in database.")
+
+    clean_name = item_name.strip()
+    clean_code = item_code.strip()
+
+    med = db.scalar(
+        select(Medicine).where(
+            or_(
+                func.lower(Medicine.name) == clean_name.lower(),
+                func.lower(Medicine.code) == clean_code.lower(),
+            )
+        )
+    )
+
+    if med:
+        med.current_stock += quantity
+    else:
+        med = Medicine(
+            code=clean_code or f"MED-{random.randint(1000, 9999)}",
+            name=clean_name,
+            generic_name=clean_name,
+            brand="Store Supply",
+            category="Pharmaceuticals",
+            manufacturer=sender,
+            dosage_form="Tablet/Capsule",
+            strength="Standard",
+            unit="Box/Strip",
+            purchase_price=50.0,
+            selling_price=65.0,
+            storage_condition="Room Temp",
+            rack_location="Main Rack A-01",
+            status="Active",
+            current_stock=quantity,
+            min_stock=10,
+            max_stock=500,
+            reorder_level=20,
+            branch=branch or current_user.branch,
+        )
+        db.add(med)
+        db.commit()
+        db.refresh(med)
+
+    batch = db.scalar(
+        select(PharmacyBatch).where(
+            PharmacyBatch.medicine_id == med.id,
+            PharmacyBatch.batch_number == batch_number,
+        )
+    )
+    if not batch:
+        batch = db.scalar(select(PharmacyBatch).where(PharmacyBatch.medicine_id == med.id))
+
+    if batch:
+        batch.available_quantity += quantity
+        batch.quantity_received += quantity
+        batch.batch_status = "Available"
+    else:
+        batch = PharmacyBatch(
+            batch_number=batch_number,
+            medicine_id=med.id,
+            medicine_name=med.name,
+            supplier_name=sender,
+            manufacturing_date=datetime.now().strftime("%Y-%m-%d"),
+            expiry_date="2027-12-31",
+            purchase_price=med.purchase_price,
+            selling_price=med.selling_price,
+            quantity_received=quantity,
+            available_quantity=quantity,
+            batch_status="Available",
+            branch=med.branch,
+        )
+        db.add(batch)
+
+    db.commit()
+
+    try:
+        notify_user_or_role(
+            db,
+            title="Stock Transfer Approved & Received 🎉",
+            message=f"Pharmacy approved {quantity} units of {item_name} sent by {sender}. Inventory stock updated.",
+            module="Pharmacy",
+            event_type="stock_transfer_approved",
+            recipient_role="Pharmacy",
+            priority="high",
+        )
+        notify_user_or_role(
+            db,
+            title="Stock Transfer Received by Pharmacy",
+            message=f"Pharmacy received {quantity} units of {item_name} (Transfer #{transfer_ref}).",
+            module="Store",
+            event_type="stock_transfer_received",
+            recipient_role="Store Manager",
+            priority="medium",
+        )
+    except Exception:
+        pass
+
+    return {
+        "message": f"Successfully approved {quantity} units of {item_name}. Stock updated in Pharmacy database.",
+        "medicine": {
+            "id": med.id,
+            "name": med.name,
+            "newCurrentStock": med.current_stock,
+        }
+    }
 
 
 # NOTE: A generic "/stock-movements" GET+POST alias used to live here,

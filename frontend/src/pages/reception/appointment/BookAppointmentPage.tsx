@@ -97,10 +97,15 @@ export const BookAppointmentPage: React.FC = () => {
   const pendingRequests = appointments.filter((a) => {
     const st = (a.status || '').toString().toLowerCase();
     const isPending = st === 'requested' || st === 'pending';
+    if (!isPending) return false;
+
+    const source = ((a as any).bookingSource || (a as any).source || '').toString().toLowerCase();
+    if (source === 'direct' || source === 'reception') return false;
+
     const br = (a.branch || '').toLowerCase().trim();
     const selBr = (selectedBranch || '').toLowerCase().trim();
     const matchBranch = !selectedBranch || selectedBranch === 'All' || !br || br === 'main branch' || br.includes(selBr) || selBr.includes(br);
-    return isPending && matchBranch;
+    return matchBranch;
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,7 +126,9 @@ export const BookAppointmentPage: React.FC = () => {
       timeSlot: selectedSlot || '10:00 AM',
       reason,
       branch: selectedBranch || selectedDoctorObj.branch || userBranch,
-    });
+      status: 'Scheduled',
+      bookingSource: 'Direct',
+    } as any);
 
     navigate('/reception/appointment/queue');
   };

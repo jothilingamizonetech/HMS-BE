@@ -7,6 +7,7 @@ from app.core.database import Base, engine
 import app.models  # noqa: F401 - ensures all models are registered on Base.metadata
 from app.seed.super_admin import seed_super_admin
 
+# Main Application Entry Point - HMS Backend
 from app.routers import (
     auth,
     patients,
@@ -72,6 +73,8 @@ async def lifespan(app: FastAPI):
             for tbl in ['appointments', 'walkin_tokens', 'queue_items', 'doctors', 'patients', 'ipd_admissions']:
                 conn.execute(sa.text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS branch VARCHAR(200)"))
 
+            conn.execute(sa.text("ALTER TABLE ipd_admissions ADD COLUMN IF NOT EXISTS attending_nurse VARCHAR(150)"))
+
             # Branch columns for pharmacy, lab, and store tables
             for tbl in [
                 'pharmacy_batches', 'pharmacy_purchases', 'prescriptions',
@@ -114,6 +117,7 @@ async def lifespan(app: FastAPI):
                 ('issued_to_person', 'VARCHAR(150)'),
                 ('batch_number', 'VARCHAR(100)'),
                 ('issued_by', 'VARCHAR(150)'),
+                ('status', "VARCHAR(50) DEFAULT 'Pending Approval'"),
                 ('reason', 'TEXT'),
             ]:
                 conn.execute(sa.text(f"ALTER TABLE stock_outward ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))

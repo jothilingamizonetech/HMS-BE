@@ -118,6 +118,10 @@ export const SuperAdminDashboard: React.FC = () => {
       addToast('error', 'Validation Error', 'Full Name & Email are required.');
       return;
     }
+    if (userForm.phone && userForm.phone.replace(/\D/g, '').length !== 10) {
+      addToast('error', 'Validation Error', 'Mobile number must be exactly 10 digits.');
+      return;
+    }
     if (userForm.password && userForm.password !== userForm.confirmPassword) {
       addToast('error', 'Validation Error', 'Passwords do not match.');
       return;
@@ -628,12 +632,13 @@ export const SuperAdminDashboard: React.FC = () => {
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Phone Number</label>
+              <label className="block font-bold text-slate-700 mb-1">Phone Number (10 digits)</label>
               <input
-                type="text"
-                placeholder="+91 98000 11122"
+                type="tel"
+                maxLength={10}
+                placeholder="10-digit mobile number"
                 value={userForm.phone}
-                onChange={(e) => setUserForm({ ...userForm, phone: e.target.value })}
+                onChange={(e) => setUserForm({ ...userForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
               />
             </div>

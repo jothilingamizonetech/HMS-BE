@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.models.patient import Gender, BloodGroup, MaritalStatus, PatientStatus, ContactPriority
 from app.schemas.common import TimestampedORMBase
@@ -35,6 +35,16 @@ class PatientBase(BaseModel):
     insurance_provider: str | None = None
     insurance_number: str | None = None
     branch: str | None = None
+
+    @field_validator("mobile", "alt_mobile", "emergency_phone")
+    @classmethod
+    def validate_mobile_fields(cls, v: str | None) -> str | None:
+        if v:
+            clean = "".join(filter(str.isdigit, v))
+            if len(clean) >= 10:
+                return clean[-10:]
+            return clean
+        return v
 
 
 class PatientCreate(PatientBase):

@@ -290,10 +290,10 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // ── Nurse ─────────────────────────────────────────────────────────────────
-    if (role === 'nurse') {
+    if (role === 'nurse' || role.includes('nurse')) {
       try {
         const [pts, bds, adm, depts, docs, apts, qItems, notifs, stItems, pos] = await Promise.all([
-          fetchPatientsApi(userBranch).catch(() => null),
+          fetchPatientsApi().catch(() => null),
           fetchBedsApi(userBranch).catch(() => null),
           fetchIpdAdmissionsApi(userBranch).catch(() => null),
           fetchDepartmentsApi().catch(() => null),
@@ -537,9 +537,9 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateAppointment = async (id: string, updated: Partial<Appointment>): Promise<void> => {
     try {
       const result = await updateAppointmentApi(id, updated);
-      setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, ...result } : a)));
+      setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated, ...result } : a)));
       addToast('success', 'Appointment Updated', `Appointment #${id} updated.`);
-      loadBackendData();
+      await loadBackendData();
     } catch (err: any) {
       console.error('updateAppointment failed:', err);
       addToast('error', 'Update Failed', err?.message || 'Failed to update appointment');

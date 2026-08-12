@@ -27,6 +27,14 @@ export const UpdatePatientPage: React.FC = () => {
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.mobile && formData.mobile.replace(/\D/g, '').length !== 10) {
+      alert('Mobile number must be exactly 10 digits.');
+      return;
+    }
+    if (formData.altMobile && formData.altMobile.replace(/\D/g, '').length !== 10) {
+      alert('Alternate mobile number must be exactly 10 digits.');
+      return;
+    }
     if (currentPatient) {
       updatePatient(currentPatient.id, formData);
     }

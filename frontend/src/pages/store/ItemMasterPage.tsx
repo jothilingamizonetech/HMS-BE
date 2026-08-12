@@ -43,11 +43,25 @@ export const ItemMasterPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ItemMaster | null>(null);
 
+  const getNextItemCode = (existingItems: ItemMaster[]) => {
+    let maxNum = 100;
+    (existingItems || []).forEach((item) => {
+      const match = (item.itemCode || '').match(/ITM-(\d+)/i);
+      if (match) {
+        const num = parseInt(match[1], 10);
+        if (!isNaN(num) && num > maxNum) {
+          maxNum = num;
+        }
+      }
+    });
+    return `ITM-${maxNum + 1}`;
+  };
+
   // Form State
   const initialFormState: Omit<ItemMaster, 'id'> = {
-    itemCode: `ITM-${100 + items.length + 1}`,
+    itemCode: getNextItemCode(items),
     itemName: '',
-    category: 'Antibiotics',
+    category: 'Pharmaceuticals',
     subCategory: '',
     genericComposition: '',
     strength: '',
@@ -76,7 +90,7 @@ export const ItemMasterPage: React.FC = () => {
     setSelectedItem(null);
     setFormData({
       ...initialFormState,
-      itemCode: `ITM-${100 + items.length + 1}`,
+      itemCode: getNextItemCode(items),
     });
     setIsModalOpen(true);
   };
@@ -149,7 +163,7 @@ export const ItemMasterPage: React.FC = () => {
   const handleResetForm = () => {
     setFormData({
       ...initialFormState,
-      itemCode: selectedItem ? selectedItem.itemCode : `ITM-${1000 + items.length + 1}`,
+      itemCode: selectedItem ? selectedItem.itemCode : getNextItemCode(items),
     });
   };
 

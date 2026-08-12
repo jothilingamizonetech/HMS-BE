@@ -53,7 +53,7 @@ class Patient(UUIDPKMixin, TimestampMixin, Base):
     # Contact info
     mobile: Mapped[str] = mapped_column(String(20), nullable=False)
     alt_mobile: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    email: Mapped[str] = mapped_column(String(150), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(150), nullable=True)
     address: Mapped[str] = mapped_column(Text, nullable=False)
     city: Mapped[str] = mapped_column(String(100), nullable=False)
     state: Mapped[str] = mapped_column(String(100), nullable=False)

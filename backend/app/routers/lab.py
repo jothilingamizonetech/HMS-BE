@@ -603,6 +603,8 @@ def doctor_review_report(item_id: str, payload: DoctorReviewIn, db: Session = De
     if payload.comments:
         row.doctor_comments = payload.comments
     row.doctor_review_date = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    if payload.reviewStatus == "Approved":
+        row.status = "Approved"
     db.commit(); db.refresh(row)
     return _camel(row)
 

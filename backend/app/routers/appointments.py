@@ -62,14 +62,15 @@ def list_appointments(
     # Branch scoping: filter by explicit branch query or current user's branch (unless super_admin/admin without filter)
     target_branch = branch or (current_user.branch if role_norm not in ("super_admin", "admin") else None)
     if target_branch and target_branch.lower() != 'all':
-        stmt = stmt.where(
-            or_(
-                func.lower(Appointment.branch) == target_branch.lower(),
-                func.lower(Appointment.branch) == 'main branch',
-                Appointment.branch.is_(None),
-                Appointment.branch == ''
-            )
-        )
+        norm_sub = target_branch.lower().replace("branch", "").replace("hospital", "").replace("cauvery", "").replace("care", "").strip()
+        apt_branch_clauses = [
+            func.lower(Appointment.branch) == target_branch.lower(),
+        ]
+        if norm_sub:
+            apt_branch_clauses.append(func.lower(Appointment.branch).contains(norm_sub))
+        if target_branch.lower() in ("main branch", "main"):
+            apt_branch_clauses.extend([Appointment.branch.is_(None), Appointment.branch == ""])
+        stmt = stmt.where(or_(*apt_branch_clauses))
 
     stmt = stmt.order_by(Appointment.created_at.desc()).offset(skip).limit(limit)
     return db.scalars(stmt).all()
@@ -259,6 +260,14 @@ def update_appointment(
     old_status = str(getattr(appointment.status, "value", appointment.status)).lower()
 
     apply_updates(appointment, payload)
+
+    if payload.status:
+        st_raw = str(getattr(payload.status, "value", payload.status)).strip()
+        for st_enum in AppointmentStatus:
+            if st_enum.value.lower() == st_raw.lower():
+                appointment.status = st_enum
+                break
+
     db.commit()
     db.refresh(appointment)
     log_audit(f"PUT /appointments/{appointment_id}", payload, payload.model_dump(exclude_unset=True), appointment, appointment)

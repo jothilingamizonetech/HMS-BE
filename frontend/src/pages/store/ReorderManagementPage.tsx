@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { ReorderItem } from '../../types/store';
 import { useHMS } from '../../context/HMSContext';
-import { fetchReorderBatchesApi } from '../../services/api';
+import { fetchReorderManagementApi, fetchStockInwardApi } from '../../services/api';
 import { Modal } from '../../components/common/Modal';
 
 export const ReorderManagementPage: React.FC = () => {
@@ -22,51 +22,84 @@ export const ReorderManagementPage: React.FC = () => {
   const [reorderItems, setReorderItems] = useState<ReorderItem[]>([]);
 
   useEffect(() => {
-    // Dynamically derive reorder alerts from storeItems in DB
-    const derived: ReorderItem[] = storeItems
-      .filter((i) => (i.currentStock || 0) <= (i.reorderLevel || 0))
-      .map((i): ReorderItem => ({
-        id: `reorder-${i.id}`,
-        itemCode: i.itemCode,
-        itemName: i.itemName,
-        category: i.category,
-        currentStock: i.currentStock,
-        reorderLevel: i.reorderLevel,
-        minStock: i.minStock,
-        maxStock: i.maxStock,
-        requiredQuantity: (i.maxStock || 100) - (i.currentStock || 0),
-        unit: i.unit,
-        suggestedVendor: 'Primary Supplier',
-        urgency: (i.currentStock || 0) === 0 ? 'Critical' : 'Moderate',
-        status: 'Pending',
-      }));
+    Promise.all([
+      fetchReorderManagementApi().catch(() => []),
+      fetchStockInwardApi().catch(() => []),
+    ]).then(([reorderData, inwardData]) => {
+      const items: ReorderItem[] = [];
+      const seen = new Set<string>();
 
-    fetchReorderBatchesApi()
-      .then((data) => {
-        if (Array.isArray(data) && data.length > 0) {
-          const apiItems = data.map((b: any): ReorderItem => ({
-            id: b.id,
-            itemCode: b.item_code || b.itemCode || 'ITM-00',
-            itemName: b.item_name || b.itemName || 'Batch Item',
+      if (Array.isArray(reorderData) && reorderData.length > 0) {
+        reorderData.forEach((b: any) => {
+          const code = b.item_code || b.itemCode || 'ITM-00';
+          seen.add(code);
+          items.push({
+            id: b.id || `reorder-${code}`,
+            itemCode: code,
+            itemName: b.item_name || b.itemName || 'Item',
             category: b.category || 'Pharmaceuticals',
             currentStock: b.current_stock ?? b.currentStock ?? 0,
-            reorderLevel: b.reorder_level ?? b.reorderLevel ?? 10,
-            minStock: b.min_stock ?? b.minStock ?? 5,
+            reorderLevel: b.reorder_level ?? b.reorderLevel ?? 20,
+            minStock: b.min_stock ?? b.minStock ?? 10,
             maxStock: b.max_stock ?? b.maxStock ?? 100,
             requiredQuantity: b.required_quantity ?? b.requiredQuantity ?? 50,
             unit: b.unit || 'Box',
-            suggestedVendor: b.vendor_name || b.suggestedVendor || 'Primary Vendor',
-            urgency: b.urgency || 'Moderate',
-            status: b.status || 'Pending',
-          }));
-          setReorderItems(apiItems);
-        } else {
-          setReorderItems(derived);
+            suggestedVendor: b.vendor_name || b.suggestedVendor || 'Primary Supplier',
+            urgency: (b.current_stock ?? 0) === 0 ? 'Critical' : 'Moderate',
+            status: 'Pending',
+          });
+        });
+      }
+
+      storeItems.forEach((i) => {
+        if (!seen.has(i.itemCode) && (i.currentStock || 0) <= (i.reorderLevel || 20)) {
+          seen.add(i.itemCode);
+          items.push({
+            id: `reorder-${i.id}`,
+            itemCode: i.itemCode,
+            itemName: i.itemName,
+            category: i.category,
+            currentStock: i.currentStock,
+            reorderLevel: i.reorderLevel,
+            minStock: i.minStock,
+            maxStock: i.maxStock,
+            requiredQuantity: Math.max((i.maxStock || 100) - (i.currentStock || 0), 10),
+            unit: i.unit,
+            suggestedVendor: 'MedLife Distributors',
+            urgency: (i.currentStock || 0) === 0 ? 'Critical' : 'Moderate',
+            status: 'Pending',
+          });
         }
-      })
-      .catch(() => {
-        setReorderItems(derived);
       });
+
+      if (Array.isArray(inwardData)) {
+        inwardData.forEach((inw: any) => {
+          const code = inw.item_code || inw.itemCode || '';
+          const name = inw.item_name || inw.itemName || '';
+          const qty = inw.quantity || 0;
+          if (code && !seen.has(code) && qty < 50) {
+            seen.add(code);
+            items.push({
+              id: `inw-reorder-${code}`,
+              itemCode: code,
+              itemName: name,
+              category: 'Pharmaceuticals',
+              currentStock: qty,
+              reorderLevel: 50,
+              minStock: 10,
+              maxStock: 200,
+              requiredQuantity: 150,
+              unit: 'Strip of 10',
+              suggestedVendor: inw.supplier || inw.supplier_name || 'Primary Vendor',
+              urgency: qty === 0 ? 'Critical' : 'Moderate',
+              status: 'Pending',
+            });
+          }
+        });
+      }
+
+      setReorderItems(items);
+    }).catch(() => {});
   }, [storeItems]);
 
   const [searchQuery, setSearchQuery] = useState('');

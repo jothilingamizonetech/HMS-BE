@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useHMS } from '../../../context/HMSContext';
+import { useAuth } from '../../../context/AuthContext';
+import { fetchNursesApi } from '../../../services/api';
 import { WardType } from '../../../types/hms';
 import { getCurrentDateFormatted } from '../../../utils/helpers';
 import { BedDouble, Save, UserPlus2, ShieldCheck, HeartPulse } from 'lucide-react';
@@ -9,6 +11,7 @@ export const AdmitPatientPage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { patients, beds, doctors, admitPatient } = useHMS();
+  const { user } = useAuth();
 
   const [selectedUhid, setSelectedUhid] = useState(searchParams.get('uhid') || (patients[0]?.uhid || ''));
   const [selectedWard, setSelectedWard] = useState<WardType>('ICU');
@@ -18,16 +21,27 @@ export const AdmitPatientPage: React.FC = () => {
   const [attendingNurse, setAttendingNurse] = useState('Nurse Anjali Rao');
   const [admissionReason, setAdmissionReason] = useState('Acute hypertensive observation');
 
-  const nurseOptions = [
-    'Nurse Anjali Rao',
-    'Nurse Sunita Verma',
-    'Nurse Priya Sharma',
-    'Nurse Kavita Nair',
-    'Nurse Meena Kumari',
-    'Nurse Sneha Patel',
-  ];
+  const [nursesList, setNursesList] = useState<{ id: string; name: string; assignedWard?: string }[]>([]);
 
   const selectedPatientObj = patients.find((p) => p.uhid === selectedUhid);
+  const activeBranch = user?.branch || selectedPatientObj?.branch;
+
+  useEffect(() => {
+    let isMounted = true;
+    fetchNursesApi(activeBranch)
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setNursesList(data);
+          if (!attendingNurse || !data.some((n: any) => n.name === attendingNurse)) {
+            setAttendingNurse(data[0].name);
+          }
+        }
+      })
+      .catch((err) => console.warn('Error fetching nurses from DB:', err));
+    return () => {
+      isMounted = false;
+    };
+  }, [activeBranch]);
 
   // Filter available beds for chosen ward
   const availableBedsInWard = beds.filter(
@@ -173,13 +187,17 @@ export const AdmitPatientPage: React.FC = () => {
             <select
               value={attendingNurse}
               onChange={(e) => setAttendingNurse(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-semibold text-slate-900 outline-none focus:bg-white"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 font-semibold text-slate-900 outline-none focus:bg-white cursor-pointer"
             >
-              {nurseOptions.map((nurse) => (
-                <option key={nurse} value={nurse}>
-                  {nurse}
-                </option>
-              ))}
+              {nursesList.length > 0 ? (
+                nursesList.map((nurse) => (
+                  <option key={nurse.id} value={nurse.name}>
+                    {nurse.name} {nurse.assignedWard ? `(${nurse.assignedWard})` : ''}
+                  </option>
+                ))
+              ) : (
+                <option value="Nurse Anjali Rao">Nurse Anjali Rao</option>
+              )}
             </select>
           </div>
 

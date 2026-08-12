@@ -46,13 +46,15 @@ def list_beds(
     role_norm = role_str.lower().replace(" ", "_").replace("userrole.", "")
     target_branch = branch or (current_user.branch if role_norm not in ("super_admin", "admin") else None)
     if target_branch and target_branch.lower() != "all":
-        stmt = stmt.where(
-            or_(
-                func.lower(Bed.branch) == target_branch.lower(),
-                Bed.branch.is_(None),
-                Bed.branch == "",
-            )
-        )
+        norm_sub = target_branch.lower().replace("branch", "").replace("hospital", "").replace("cauvery", "").replace("care", "").strip()
+        bed_branch_clauses = [
+            func.lower(Bed.branch) == target_branch.lower(),
+        ]
+        if norm_sub:
+            bed_branch_clauses.append(func.lower(Bed.branch).contains(norm_sub))
+        if target_branch.lower() in ("main branch", "main"):
+            bed_branch_clauses.extend([Bed.branch.is_(None), Bed.branch == ""])
+        stmt = stmt.where(or_(*bed_branch_clauses))
     return db.scalars(stmt).all()
 
 
@@ -161,13 +163,16 @@ def list_admissions(
     role_norm = role_str.lower().replace(" ", "_").replace("userrole.", "")
     target_branch = branch or (current_user.branch if role_norm not in ("super_admin", "admin") else None)
     if target_branch and target_branch.lower() != "all":
-        stmt = stmt.where(
-            or_(
-                func.lower(IPDAdmission.branch) == target_branch.lower(),
-                IPDAdmission.branch.is_(None),
-                IPDAdmission.branch == "",
-            )
-        )
+        norm_sub = target_branch.lower().replace("branch", "").replace("hospital", "").replace("cauvery", "").replace("care", "").strip()
+        adm_branch_clauses = [
+            func.lower(IPDAdmission.branch) == target_branch.lower(),
+            IPDAdmission.branch.is_(None),
+            IPDAdmission.branch == "",
+            func.lower(IPDAdmission.branch) == "main branch",
+        ]
+        if norm_sub:
+            adm_branch_clauses.append(func.lower(IPDAdmission.branch).contains(norm_sub))
+        stmt = stmt.where(or_(*adm_branch_clauses))
     stmt = stmt.order_by(IPDAdmission.created_at.desc())
     return db.scalars(stmt).all()
 

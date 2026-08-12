@@ -13,6 +13,7 @@ import { MedicationAdmin } from '../../../types/nurse';
 import { Patient } from '../../../types/hms';
 import { useNurse } from '../../../context/NurseContext';
 import { useHMS } from '../../../context/HMSContext';
+import { useAuth } from '../../../context/AuthContext';
 import { PatientSearch } from '../../../components/nurse/PatientSearch';
 import { PatientInfoCard } from '../../../components/nurse/PatientInfoCard';
 import { Modal } from '../../../components/common/Modal';
@@ -21,9 +22,16 @@ import { NurseBranchSelector } from '../../../components/nurse/NurseBranchSelect
 export const MedicationAdminPage: React.FC = () => {
   const { medications, addMedicationAdmin, deleteMedicationAdmin, administerMedication, selectedBranch } = useNurse();
   const { patients, doctors, addToast } = useHMS();
+  const { user } = useAuth();
 
   // Active Selected Patient from HMS Database
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(patients[0] || null);
+
+  React.useEffect(() => {
+    if (!selectedPatient && patients.length > 0) {
+      setSelectedPatient(patients[0]);
+    }
+  }, [patients, selectedPatient]);
 
   // Derived prescribed medicines list for selected patient (Read-Only fields)
   const patientPrescriptions = useMemo(() => {
@@ -137,10 +145,11 @@ export const MedicationAdminPage: React.FC = () => {
         m.patientUhid.toLowerCase().includes(tableSearch.toLowerCase()) ||
         m.medicineName.toLowerCase().includes(tableSearch.toLowerCase()) ||
         m.doctorName.toLowerCase().includes(tableSearch.toLowerCase());
-      const matchesBranch = selectedBranch === 'All' || !m.branch || m.branch === selectedBranch;
+      const activeBr = selectedBranch && selectedBranch !== 'All' ? selectedBranch : (user?.branch || '');
+      const matchesBranch = !activeBr || activeBr === 'All' || (m.branch ? (m.branch === activeBr || m.branch.toLowerCase().includes(activeBr.toLowerCase().replace(/branch|hospital|cauvery|care/gi, '').trim())) : false);
       return matchesSearch && matchesBranch;
     });
-  }, [medications, tableSearch, selectedBranch]);
+  }, [medications, tableSearch, selectedBranch, user?.branch]);
 
   const totalPages = Math.ceil(filteredMedications.length / itemsPerPage) || 1;
   const paginatedMedications = useMemo(() => {
@@ -202,9 +211,9 @@ export const MedicationAdminPage: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {patientPrescriptions.map((med) => (
+            {patientPrescriptions.map((med, idx) => (
               <div
-                key={med.id}
+                key={`${med.id}-${idx}`}
                 className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3 relative flex flex-col justify-between"
               >
                 {/* READ-ONLY PRESCRIBED MEDICINE DETAILS */}
@@ -289,8 +298,8 @@ export const MedicationAdminPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {paginatedMedications.length > 0 ? (
-                paginatedMedications.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50/70 transition-colors">
+                paginatedMedications.map((m, idx) => (
+                  <tr key={`${m.id}-${idx}`} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-3.5 px-4">
                       <p className="font-bold text-slate-900">{m.patientName}</p>
                       <p className="text-[10px] text-blue-600 font-mono font-semibold">{m.patientUhid}</p>

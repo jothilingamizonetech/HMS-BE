@@ -61,6 +61,7 @@ class IPDAdmission(UUIDPKMixin, TimestampMixin, Base):
     bed_id: Mapped[str | None] = mapped_column(ForeignKey("beds.id", ondelete="SET NULL"), nullable=True)
     admission_date: Mapped[str] = mapped_column(String(20), nullable=False)
     attending_doctor: Mapped[str] = mapped_column(String(150), nullable=False)
+    attending_nurse: Mapped[str | None] = mapped_column(String(150), nullable=True)
     admission_reason: Mapped[str] = mapped_column(Text, nullable=True)
     emergency_contact: Mapped[str] = mapped_column(String(150), nullable=False)
     insurance_provider: Mapped[str | None] = mapped_column(String(150), nullable=True)

@@ -8,7 +8,7 @@ import {
 import { useHMS } from '../../../context/HMSContext';
 import { useLab } from '../../../context/LabContext';
 import { useAuth } from '../../../context/AuthContext';
-import { fetchConsultationsApi, saveConsultationApi, updateAppointmentStatusApi, createPrescriptionApi } from '../../../services/api';
+import { fetchConsultationsApi, saveConsultationApi, updateAppointmentStatusApi, createPrescriptionApi, fetchVitalsApi } from '../../../services/api';
 
 // ─── Interfaces ────────────────────────────────────────────────
 interface DoctorAppointment {
@@ -43,15 +43,21 @@ interface DoctorPatient {
 }
 
 interface Vitals {
-  temperature?: number;
-  pulse?: number;
-  systolicBP?: number;
-  diastolicBP?: number;
   height?: number;
   weight?: number;
-  bmi?: number;
-  spo2?: number;
+  temperature?: number;
+  bloodPressure?: string;
+  systolicBP?: number;
+  diastolicBP?: number;
+  pulse?: number;
+  pulseRate?: number;
   respiratoryRate?: number;
+  spo2?: number;
+  bloodSugar?: number;
+  painScale?: number;
+  remarks?: string;
+  bmi?: number;
+  recordedBy?: string;
 }
 
 interface Medicine {
@@ -376,6 +382,17 @@ export const ConsultationPage: React.FC = () => {
     fetchAppointments();
   }, []);
 
+  const [recordedVitalsList, setRecordedVitalsList] = useState<any[]>([]);
+
+  // Fetch Nurse-recorded Vitals from backend DB
+  useEffect(() => {
+    fetchVitalsApi()
+      .then((data) => {
+        if (Array.isArray(data)) setRecordedVitalsList(data);
+      })
+      .catch(() => null);
+  }, []);
+
   // Fetch previously saved OPD consultations from the backend so vitals,
   // diagnosis, and prescriptions survive a refresh/re-login instead of
   // living only in local component state.
@@ -402,8 +419,9 @@ export const ConsultationPage: React.FC = () => {
 
   // Form State
   const [vitals, setVitals] = useState<Vitals>({
-    temperature: 98.6, pulse: 72, systolicBP: 120, diastolicBP: 80,
-    height: 170, weight: 70, bmi: 24.2, spo2: 98, respiratoryRate: 16,
+    height: 170, weight: 70, temperature: 98.6, bloodPressure: '120/80',
+    systolicBP: 120, diastolicBP: 80, pulse: 72, pulseRate: 72,
+    respiratoryRate: 16, spo2: 98, bloodSugar: 110, painScale: 1, remarks: '', bmi: 24.2,
   });
   const [chiefComplaint, setChiefComplaint] = useState('');
   const [symptoms, setSymptoms] = useState<string[]>([]);
@@ -522,10 +540,95 @@ export const ConsultationPage: React.FC = () => {
     setSelectedAppointment(apt);
     setViewMode('consultation');
 
+    const pUhid = (apt.patientUhid || '').toLowerCase().trim();
+    const pName = (apt.patientName || '').toLowerCase().trim();
+
+    // Re-query DB for fresh vitals so nurse edits show in real-time
+    fetchVitalsApi()
+      .then((freshList) => {
+        if (Array.isArray(freshList)) {
+          setRecordedVitalsList(freshList);
+          const found = freshList.find(
+            (v: any) =>
+              (v.patient_uhid || v.patientUhid || '').toLowerCase().trim() === pUhid ||
+              (v.patient_name || v.patientName || '').toLowerCase().trim() === pName
+          );
+          if (found) {
+            const bpStr = found.blood_pressure || found.bloodPressure || `${found.bp_sys || 120}/${found.bp_dia || 80}`;
+            const [sys, dia] = bpStr.split('/').map(Number);
+            const h = Number(found.height || 170);
+            const w = Number(found.weight || 70);
+            const hM = h / 100;
+            const bmiCalc = Number((w / (hM * hM)).toFixed(1));
+
+            const freshV: Vitals = {
+              height: h,
+              weight: w,
+              temperature: Number(found.temperature || 98.6),
+              bloodPressure: bpStr,
+              systolicBP: sys || 120,
+              diastolicBP: dia || 80,
+              pulse: Number(found.pulse_rate || found.pulseRate || found.pulse || 72),
+              pulseRate: Number(found.pulse_rate || found.pulseRate || found.pulse || 72),
+              respiratoryRate: Number(found.respiratory_rate || found.respiratoryRate || 16),
+              spo2: Number(found.spo2 || found.spO2 || 98),
+              bloodSugar: Number(found.blood_sugar || found.bloodSugar || 110),
+              painScale: Number(found.pain_scale || found.painScale || 1),
+              remarks: found.remarks || '',
+              recordedBy: found.recorded_by || found.recordedBy || 'Nurse',
+              bmi: bmiCalc,
+            };
+            setVitals((prev) => ({ ...prev, ...freshV }));
+          }
+        }
+      })
+      .catch(() => null);
+
+    // Initial local vitals fallback
+    const foundVital = recordedVitalsList.find(
+      (v: any) =>
+        (v.patient_uhid || v.patientUhid || '').toLowerCase().trim() === pUhid ||
+        (v.patient_name || v.patientName || '').toLowerCase().trim() === pName
+    );
+
+    let initialVitals: Vitals;
+    if (foundVital) {
+      const bpStr = foundVital.blood_pressure || foundVital.bloodPressure || `${foundVital.bp_sys || 120}/${foundVital.bp_dia || 80}`;
+      const [sys, dia] = bpStr.split('/').map(Number);
+      const h = Number(foundVital.height || 170);
+      const w = Number(foundVital.weight || 70);
+      const hM = h / 100;
+      const bmiCalc = Number((w / (hM * hM)).toFixed(1));
+
+      initialVitals = {
+        height: h,
+        weight: w,
+        temperature: Number(foundVital.temperature || 98.6),
+        bloodPressure: bpStr,
+        systolicBP: sys || 120,
+        diastolicBP: dia || 80,
+        pulse: Number(foundVital.pulse_rate || foundVital.pulseRate || foundVital.pulse || 72),
+        pulseRate: Number(foundVital.pulse_rate || foundVital.pulseRate || foundVital.pulse || 72),
+        respiratoryRate: Number(foundVital.respiratory_rate || foundVital.respiratoryRate || 16),
+        spo2: Number(foundVital.spo2 || foundVital.spO2 || 98),
+        bloodSugar: Number(foundVital.blood_sugar || foundVital.bloodSugar || 110),
+        painScale: Number(foundVital.pain_scale || foundVital.painScale || 1),
+        remarks: foundVital.remarks || '',
+        recordedBy: foundVital.recorded_by || foundVital.recordedBy || 'Nurse',
+        bmi: bmiCalc,
+      };
+    } else {
+      initialVitals = {
+        height: 170, weight: 70, temperature: 98.6, bloodPressure: '120/80',
+        systolicBP: 120, diastolicBP: 80, pulse: 75, pulseRate: 75,
+        respiratoryRate: 16, spo2: 98, bloodSugar: 110, painScale: 1, remarks: '', bmi: 24.2
+      };
+    }
+
     // Load saved data if exists
     const record = savedConsultations[apt.id];
     if (record) {
-      setVitals(record.vitals);
+      setVitals({ ...initialVitals, ...record.vitals });
       setChiefComplaint(record.chiefComplaint);
       setSymptoms(record.symptoms);
       setClinicalFindings(record.clinicalFindings);
@@ -537,11 +640,6 @@ export const ConsultationPage: React.FC = () => {
       setFollowUpNotes(record.followUpNotes);
       setBackupForm(record);
     } else {
-      // Default empty/initial form
-      const initialVitals: Vitals = {
-        temperature: 98.6, pulse: 75, systolicBP: 120, diastolicBP: 80,
-        height: 170, weight: 70, bmi: 24.2, spo2: 98, respiratoryRate: 16,
-      };
       setVitals(initialVitals);
       setChiefComplaint(apt.reason || '');
       setSymptoms([]);
@@ -1303,18 +1401,20 @@ export const ConsultationPage: React.FC = () => {
             </button>
           </div>
 
-          {/* Read-Only Vitals Grid */}
-          <ConsultationSection label="Vitals Summary">
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+          {/* Read-Only Vitals Grid (Nurse Portal Order) */}
+          <ConsultationSection label="Vitals Summary (Nurse Record)">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               {[
-                { label: 'Temp', val: `${vitals.temperature ?? '--'} °F` },
-                { label: 'Pulse', val: `${vitals.pulse ?? '--'} bpm` },
-                { label: 'BP', val: `${vitals.systolicBP ?? '--'}/${vitals.diastolicBP ?? '--'}` },
-                { label: 'SpO₂', val: `${vitals.spo2 ?? '--'} %` },
-                { label: 'Resp', val: `${vitals.respiratoryRate ?? '--'} /min` },
-                { label: 'Height', val: `${vitals.height ?? '--'} cm` },
-                { label: 'Weight', val: `${vitals.weight ?? '--'} kg` },
-                { label: 'BMI', val: `${vitals.bmi ?? '--'} kg/m²` },
+                { label: 'Height', val: `${vitals.height ?? 170} cm` },
+                { label: 'Weight', val: `${vitals.weight ?? 70} kg` },
+                { label: 'Temperature', val: `${vitals.temperature ?? 98.6} °F` },
+                { label: 'Blood Pressure', val: `${vitals.bloodPressure || `${vitals.systolicBP ?? 120}/${vitals.diastolicBP ?? 80}`}` },
+                { label: 'Pulse Rate', val: `${vitals.pulseRate ?? vitals.pulse ?? 72} bpm` },
+                { label: 'Respiratory Rate', val: `${vitals.respiratoryRate ?? 16} /min` },
+                { label: 'SpO₂ Oxygen', val: `${vitals.spo2 ?? 98} %` },
+                { label: 'Blood Sugar', val: `${vitals.bloodSugar ?? 110} mg/dL` },
+                { label: 'Pain Scale', val: `${vitals.painScale ?? 1} / 10` },
+                { label: 'BMI (Calculated)', val: `${vitals.bmi ?? 24.2} kg/m²` },
               ].map((item, idx) => (
                 <div key={idx} className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">{item.label}</span>
@@ -1322,6 +1422,15 @@ export const ConsultationPage: React.FC = () => {
                 </div>
               ))}
             </div>
+            {vitals.remarks && (
+              <div className="mt-3 p-3.5 rounded-xl bg-blue-50/70 border border-blue-100 text-xs">
+                <span className="font-bold text-blue-900 block mb-0.5">Nurse Remarks & Triage Observations:</span>
+                <p className="text-slate-700 font-medium italic">"{vitals.remarks}"</p>
+                {vitals.recordedBy && (
+                  <span className="text-[10px] text-slate-500 font-semibold block mt-1">— Recorded by {vitals.recordedBy}</span>
+                )}
+              </div>
+            )}
           </ConsultationSection>
 
           {/* Read-Only Complaints & Clinical Notes */}
@@ -1582,34 +1691,76 @@ export const ConsultationPage: React.FC = () => {
       ) : (
         /* EDIT / FORM ENTRY MODE FOR CONSULTATION REPORT */
         <div className="space-y-6">
-          {/* Vitals Entry */}
+          {/* Vitals Entry (Nurse Portal Order) */}
           <ConsultationSection label="Vitals Entry">
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 text-xs">
               {[
-                { key: 'temperature', label: 'Temp (°F)', step: 0.1 },
-                { key: 'pulse', label: 'Pulse (bpm)', step: 1 },
-                { key: 'systolicBP', label: 'Systolic BP', step: 1 },
-                { key: 'diastolicBP', label: 'Diastolic BP', step: 1 },
                 { key: 'height', label: 'Height (cm)', step: 1 },
                 { key: 'weight', label: 'Weight (kg)', step: 0.1 },
-                { key: 'spo2', label: 'SpO₂ (%)', step: 1 },
-                { key: 'respiratoryRate', label: 'Resp. Rate', step: 1 },
+                { key: 'temperature', label: 'Temperature (°F)', step: 0.1 },
+                { key: 'bloodPressure', label: 'Blood Pressure (SYS/DIA)', isText: true },
+                { key: 'pulseRate', label: 'Pulse Rate (bpm)', step: 1 },
+                { key: 'respiratoryRate', label: 'Respiratory Rate (bpm)', step: 1 },
+                { key: 'spo2', label: 'SpO₂ Oxygen (%)', step: 1 },
+                { key: 'bloodSugar', label: 'Blood Sugar (mg/dL)', step: 1 },
+                { key: 'painScale', label: 'Pain Scale (1 to 10)', step: 1 },
               ].map((field) => (
                 <div key={field.key}>
                   <label className="block font-bold text-slate-700 mb-1">{field.label}</label>
-                  <input
-                    type="number"
-                    step={field.step}
-                    value={(vitals as Record<string, number>)[field.key] ?? ''}
-                    onChange={(e) => updateVital(field.key as any, parseFloat(e.target.value) || 0)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
+                  {field.isText ? (
+                    <input
+                      type="text"
+                      placeholder="120/80"
+                      value={vitals.bloodPressure || `${vitals.systolicBP || 120}/${vitals.diastolicBP || 80}`}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const [sys, dia] = val.split('/').map(Number);
+                        setVitals((prev) => ({
+                          ...prev,
+                          bloodPressure: val,
+                          systolicBP: sys || prev.systolicBP,
+                          diastolicBP: dia || prev.diastolicBP,
+                        }));
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  ) : (
+                    <input
+                      type="number"
+                      step={field.step}
+                      value={(vitals as Record<string, any>)[field.key] ?? ''}
+                      onChange={(e) => {
+                        const numVal = parseFloat(e.target.value) || 0;
+                        setVitals((prev) => {
+                          const updated = { ...prev, [field.key]: numVal };
+                          if (field.key === 'height' || field.key === 'weight') {
+                            const hM = (updated.height || 170) / 100;
+                            updated.bmi = Number(((updated.weight || 70) / (hM * hM)).toFixed(1));
+                          }
+                          return updated;
+                        });
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                  )}
                 </div>
               ))}
             </div>
-            <div className="mt-4 p-3 rounded-xl bg-blue-50/50 border border-blue-200 flex items-center justify-between">
-              <span className="text-[10px] font-bold text-blue-700 uppercase">Auto-Calculated BMI</span>
-              <p className="text-base font-black text-blue-700">{vitals.bmi || '--'} kg/m²</p>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-3.5 rounded-xl bg-blue-50/50 border border-blue-200 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-blue-700 uppercase">Auto-Calculated BMI</span>
+                <p className="text-base font-black text-blue-700">{vitals.bmi || '--'} kg/m²</p>
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1 text-xs">Nurse Remarks / Triage Observations</label>
+                <input
+                  type="text"
+                  placeholder="Notes on patient symptoms, discomfort level, or triage alerts..."
+                  value={vitals.remarks || ''}
+                  onChange={(e) => setVitals((prev) => ({ ...prev, remarks: e.target.value }))}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-medium outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                />
+              </div>
             </div>
           </ConsultationSection>
 

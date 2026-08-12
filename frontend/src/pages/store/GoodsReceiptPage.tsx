@@ -15,12 +15,12 @@ import {
   Trash2,
 } from 'lucide-react';
 import { GoodsReceipt, GRNItem } from '../../types/store';
-import { fetchGoodsReceiptsApi, createGoodsReceiptApi } from '../../services/api';
+import { fetchGoodsReceiptsApi, createGoodsReceiptApi, createStockInwardApi } from '../../services/api';
 import { useHMS } from '../../context/HMSContext';
 import { Modal } from '../../components/common/Modal';
 
 export const GoodsReceiptPage: React.FC = () => {
-  const { addToast, purchaseOrders, storeItems } = useHMS();
+  const { addToast, purchaseOrders, storeItems, updatePurchaseOrder } = useHMS();
   const [grnList, setGrnList] = useState<GoodsReceipt[]>([]);
 
   const loadGrnList = async () => {
@@ -186,7 +186,12 @@ export const GoodsReceiptPage: React.FC = () => {
         status: created.status || 'Completed',
       };
       setGrnList((prev) => [mapped, ...prev]);
-      addToast('success', 'GRN Created (API)', `Saved Goods Receipt ${grnNum} to database.`);
+
+      if (po) {
+        await updatePurchaseOrder(po.id, { status: 'Fulfilled' });
+      }
+
+      addToast('success', 'GRN Verified & Stock Inward Logged', `Saved Goods Receipt ${grnNum} and updated inventory inward stock.`);
     } catch (err) {
       console.warn('API error saving GRN:', err);
       addToast('error', 'Save Failed', 'Could not save Goods Receipt to database.');

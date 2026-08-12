@@ -78,14 +78,17 @@ export const DoctorReviewPage: React.FC = () => {
 
   const handleApprove = (rep: LabReportItem) => {
     doctorReviewReport(rep.id, 'Approved', 'Approved by Consultant Pathologist.');
+    addToast('success', 'Report Approved', `Report ${rep.reportNumber} approved & status updated to Approved.`);
   };
 
   const handleReject = (rep: LabReportItem) => {
     doctorReviewReport(rep.id, 'Rejected', 'Report rejected due to parameter mismatch.');
+    addToast('error', 'Report Rejected', `Report ${rep.reportNumber} returned to lab technician for review.`);
   };
 
   const handleReTest = (rep: LabReportItem) => {
     doctorReviewReport(rep.id, 'Re-Test Requested', 'Re-test requested on fresh specimen.');
+    addToast('warning', 'Re-Test Requested', `Specimen re-test requested for ${rep.patientName}.`);
   };
 
   const handleSendToDoctor = (rep: LabReportItem) => {

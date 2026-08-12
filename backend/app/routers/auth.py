@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.database import get_db
 from app.core.security import verify_password, create_access_token
@@ -24,7 +24,11 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 def _authenticate(db: Session, email_or_username: str, password: str) -> User:
     target = email_or_username.strip().lower()
 
-    user = db.scalar(select(User).where((User.email == target) | (User.username == target)))
+    user = db.scalar(
+        select(User).where(
+            (func.lower(User.email) == target) | (func.lower(User.username) == target)
+        )
+    )
 
     if not user or not verify_password(password, user.hashed_password):
         raise HTTPException(

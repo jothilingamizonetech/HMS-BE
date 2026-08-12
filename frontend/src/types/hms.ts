@@ -242,6 +242,7 @@ export interface IPDAdmission {
   insuranceProvider?: string;
   insuranceNumber?: string;
   status: 'Admitted' | 'Discharged' | 'Transferred';
+  branch?: string;
 }
 
 export interface Notification {
@@ -281,7 +282,7 @@ export type CollectionStatus = 'Pending' | 'Collected' | 'Recollect' | 'Rejected
 export type ProcessingStatus = 'Pending' | 'In Processing' | 'Completed' | 'QC Pending' | 'QC Passed';
 export type ResultFlag = 'Normal' | 'High' | 'Low' | 'Critical';
 export type ResultStatus = 'Pending' | 'Completed' | 'Critical' | 'Verified';
-export type ReportStatus = 'Draft' | 'Generated' | 'Printed' | 'Emailed';
+export type ReportStatus = 'Draft' | 'Generated' | 'Printed' | 'Emailed' | 'Approved' | 'Released';
 export type DoctorReviewStatus = 'Pending Review' | 'Approved' | 'Rejected' | 'Re-Test Requested';
 
 export interface LabTestMaster {
@@ -429,6 +430,7 @@ export interface Medicine {
   rackLocation: string;
   status: 'Active' | 'Inactive';
   currentStock: number;
+  current_stock?: number;
   minStock: number;
   maxStock: number;
   reorderLevel: number;
@@ -485,6 +487,7 @@ export interface PurchaseEntry {
 
 export interface PrescriptionItem {
   id: string;
+  medicineId?: string;
   medicineName: string;
   batchNumber: string;
   quantity: number;

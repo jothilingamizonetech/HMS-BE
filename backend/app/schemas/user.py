@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.models.user import UserRole
 from app.schemas.common import TimestampedORMBase
@@ -13,15 +13,22 @@ class UserBase(BaseModel):
     username: str | None = Field(None, alias="userId")
     avatar: str | None = None
     department: str | None = None
-    # Nurse ward-scoping key (see CHANGELOG.md Phase 13) — distinct from
-    # `department`. Only meaningful for role == "nurse"; null/omitted means
-    # "not yet assigned, don't scope".
     assigned_ward: str | None = Field(None, alias="assignedWard")
     branch: str | None = None
     employee_id: str | None = Field(None, alias="employeeId")
     phone: str | None = None
     status: str = "Active"
     last_login: str | None = Field(None, alias="lastLogin")
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: str | None) -> str | None:
+        if v:
+            clean = "".join(filter(str.isdigit, v))
+            if len(clean) >= 10:
+                return clean[-10:]
+            return clean
+        return v
 
 
 class UserCreate(UserBase):

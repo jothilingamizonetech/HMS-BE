@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.exc import IntegrityError
 
@@ -11,7 +11,9 @@ from app.core.database import get_db
 from app.deps import get_current_active_user, require_permission
 from app.models.goods_receipt import GoodsReceipt, GRNItem
 from app.models.store_item import ItemMaster
+from app.models.pharmacy import Medicine, PharmacyBatch
 from app.models.purchase_order import PurchaseOrder, POStatus
+from app.models.stock_movement import StockInward
 from app.schemas.goods_receipt import GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptOut
 from app.services.notification_service import notify_user_or_role
 
@@ -61,12 +63,94 @@ def create_grn(payload: GoodsReceiptCreate, db: Session = Depends(get_db), _=Dep
     grn = GoodsReceipt(**data, items=grn_items)
     db.add(grn)
 
-    # Increment stock for accepted quantities against the item master
+    # Increment stock for accepted quantities against the item master and sync to Pharmacy
     for line in payload.items:
-        if line.item_id:
-            item = db.get(ItemMaster, line.item_id)
-            if item:
-                item.current_stock += line.accepted_quantity
+        item = db.get(ItemMaster, line.item_id) if line.item_id else None
+        if item and line.accepted_quantity > 0:
+            item.current_stock += line.accepted_quantity
+
+            # Sync all pharmaceutical / medicine items to Pharmacy stock & batch
+            cat_str = str(item.category.value if hasattr(item.category, "value") else item.category)
+            if cat_str.lower() in ("pharmaceuticals", "medicine", "medicines") or "pharm" in cat_str.lower():
+                med = db.scalar(
+                    select(Medicine).where(
+                        or_(
+                            Medicine.code == item.item_code,
+                            func.lower(Medicine.name) == item.item_name.lower(),
+                        )
+                    )
+                )
+                if med:
+                    med.current_stock += line.accepted_quantity
+                else:
+                    unit_str = str(item.unit.value if hasattr(item.unit, "value") else item.unit)
+                    med = Medicine(
+                        code=item.item_code,
+                        name=item.item_name,
+                        generic_name=item.item_name,
+                        brand=item.brand or "Standard",
+                        category="Pharmaceuticals",
+                        manufacturer=data.get("vendor_name", "Store Vendor"),
+                        dosage_form="Tablet/Capsule",
+                        strength="Standard",
+                        unit=unit_str or "Piece",
+                        purchase_price=item.unit_price or 0.0,
+                        selling_price=round((item.unit_price or 0.0) * 1.15, 2),
+                        storage_condition="Room Temp",
+                        rack_location=item.storage_location or "Main Store Rack",
+                        status="Active",
+                        current_stock=line.accepted_quantity,
+                        min_stock=item.min_stock or 0,
+                        max_stock=item.max_stock or 0,
+                        reorder_level=item.reorder_level or 0,
+                        branch=data.get("branch"),
+                    )
+                    db.add(med)
+                    db.flush()
+
+                batch_num = f"BATCH-{data['grn_number']}-{item.item_code}"
+                batch = db.scalar(select(PharmacyBatch).where(PharmacyBatch.batch_number == batch_num))
+                if batch:
+                    batch.available_quantity += line.accepted_quantity
+                    batch.quantity_received += line.accepted_quantity
+                    batch.batch_status = "Available"
+                else:
+                    batch = PharmacyBatch(
+                        batch_number=batch_num,
+                        medicine_id=med.id,
+                        medicine_name=item.item_name,
+                        supplier_name=data.get("vendor_name", "Store Vendor"),
+                        manufacturing_date=data.get("received_date", today_str()),
+                        expiry_date="2027-12-31",
+                        purchase_price=item.unit_price or 0.0,
+                        selling_price=round((item.unit_price or 0.0) * 1.15, 2),
+                        quantity_received=line.accepted_quantity,
+                        available_quantity=line.accepted_quantity,
+                        batch_status="Available",
+                        branch=data.get("branch"),
+                    )
+                    db.add(batch)
+
+        # Log Stock Inward receipt for store inventory management
+        batch_num = f"BAT-{data['grn_number']}-{line.item_code}"
+        stock_inw = StockInward(
+            inward_number=f"INW-{data['grn_number']}-{line.item_code}",
+            po_number=data.get("po_number") or "",
+            item_id=line.item_id,
+            item_code=line.item_code,
+            item_name=line.item_name,
+            quantity=line.accepted_quantity,
+            unit_price=getattr(item, 'unit_price', 0.0) if item else 0.0,
+            batch_number=batch_num,
+            expiry_date="2027-12-31",
+            supplier=data.get("vendor_name", "Store Vendor"),
+            supplier_name=data.get("vendor_name", "Store Vendor"),
+            warehouse="Central Store Bay 1",
+            received_by="Store Officer",
+            date=data.get("received_date", today_str()),
+            branch=data.get("branch"),
+        )
+        db.add(stock_inw)
 
     # Close the loop on the PO lifecycle: once goods against a PO have been
     # received and verified, the PO is fulfilled.
@@ -114,8 +198,7 @@ def update_grn(
 @router.delete("/{grn_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_grn(grn_id: str, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_delete):
     grn = get_or_404(db, GoodsReceipt, grn_id, "Goods receipt")
-    # Deleting a GRN must reverse the stock it added on creation, or every
-    # accepted item stays permanently over-counted.
+    # Deleting a GRN must reverse the stock it added on creation across store & pharmacy.
     for line in grn.items:
         if line.item_id:
             item = db.get(ItemMaster, line.item_id)
@@ -130,6 +213,23 @@ def delete_grn(grn_id: str, db: Session = Depends(get_db), _=Depends(get_current
                         ),
                     )
                 item.current_stock -= line.accepted_quantity
+                # Reverse stock in Medicine and PharmacyBatch
+                med = db.scalar(
+                    select(Medicine).where(
+                        or_(
+                            Medicine.code == item.item_code,
+                            func.lower(Medicine.name) == item.item_name.lower(),
+                        )
+                    )
+                )
+                if med:
+                    med.current_stock = max(0, med.current_stock - line.accepted_quantity)
+                batch_num = f"BATCH-{grn.grn_number}-{item.item_code}"
+                batch = db.scalar(select(PharmacyBatch).where(PharmacyBatch.batch_number == batch_num))
+                if batch:
+                    batch.available_quantity = max(0, batch.available_quantity - line.accepted_quantity)
+                    if batch.available_quantity == 0:
+                        batch.batch_status = "Out of Stock"
     if grn.purchase_order_id:
         po = db.get(PurchaseOrder, grn.purchase_order_id)
         if po and po.status == POStatus.Fulfilled:

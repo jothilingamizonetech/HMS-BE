@@ -638,6 +638,7 @@ export const LabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   ) => {
     const rep = labReports.find((r) => r.id === id || r.reportNumber === id);
     const reviewDate = new Date().toLocaleString();
+    const newStatus: LabReportItem['status'] = status === 'Approved' ? 'Approved' : (rep?.status || 'Generated');
 
     setLabReports((prev) =>
       prev.map((r) =>
@@ -645,6 +646,7 @@ export const LabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           ? {
               ...r,
               doctorReviewStatus: status,
+              status: newStatus,
               doctorComments: comments || r.doctorComments,
               doctorReviewDate: reviewDate,
             }
@@ -661,10 +663,11 @@ export const LabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (res.ok) {
         const saved = await res.json();
-        setLabReports((prev) => prev.map((r) => (r.id === id || r.reportNumber === id ? { ...r, ...saved } : r)));
+        setLabReports((prev) => prev.map((r) => (r.id === id || r.reportNumber === id ? { ...r, ...saved, status: newStatus } : r)));
       } else {
         await updateLabReport(id, {
           doctorReviewStatus: status,
+          status: newStatus,
           doctorComments: comments || rep?.doctorComments,
           doctorReviewDate: reviewDate,
         });
@@ -673,6 +676,7 @@ export const LabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('doctorReviewReport sync failed:', e);
       await updateLabReport(id, {
         doctorReviewStatus: status,
+        status: newStatus,
         doctorComments: comments || rep?.doctorComments,
         doctorReviewDate: reviewDate,
       });

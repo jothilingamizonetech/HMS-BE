@@ -26,6 +26,24 @@ class StockInwardCreate(StockInwardBase):
     date: str | None = None
 
 
+class StockInwardUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, from_attributes=True)
+
+    po_number: str | None = Field(None, alias="poNumber")
+    item_id: str | None = Field(None, alias="itemId")
+    item_code: str | None = Field(None, alias="itemCode")
+    item_name: str | None = Field(None, alias="itemName")
+    quantity: int | None = Field(None, gt=0)
+    unit_price: float | None = Field(None, alias="unitPrice")
+    batch_number: str | None = Field(None, alias="batchNumber")
+    expiry_date: str | None = Field(None, alias="expiryDate")
+    supplier: str | None = None
+    supplier_name: str | None = Field(None, alias="supplierName")
+    warehouse: str | None = None
+    received_by: str | None = Field(None, alias="receivedBy")
+    date: str | None = None
+
+
 class StockInwardOut(StockInwardBase, TimestampedORMBase):
     date: str
 
@@ -49,6 +67,7 @@ class StockOutwardBase(BaseModel):
     batch_number: str | None = Field(None, alias="batchNumber")
     quantity: int = Field(1, gt=0)
     issued_by: str | None = Field(None, alias="issuedBy")
+    status: str | None = Field("Pending Approval", alias="status")
 
 
 class StockOutwardCreate(StockOutwardBase):

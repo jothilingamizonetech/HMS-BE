@@ -48,14 +48,16 @@ def list_patients(
 ):
     stmt = select(Patient)
     if branch and branch.lower() != 'all':
-        stmt = stmt.where(
-            or_(
-                func.lower(Patient.branch) == branch.lower(),
-                func.lower(Patient.branch) == 'main branch',
-                Patient.branch.is_(None),
-                Patient.branch == ''
-            )
-        )
+        norm_sub = branch.lower().replace("branch", "").replace("hospital", "").replace("cauvery", "").replace("care", "").strip()
+        patient_branch_clauses = [
+            func.lower(Patient.branch) == branch.lower(),
+            Patient.branch.is_(None),
+            Patient.branch == "",
+            func.lower(Patient.branch) == "main branch",
+        ]
+        if norm_sub:
+            patient_branch_clauses.append(func.lower(Patient.branch).contains(norm_sub))
+        stmt = stmt.where(or_(*patient_branch_clauses))
     if q:
         like = f"%{q}%"
         stmt = stmt.where(
@@ -78,6 +80,7 @@ def register_patient(payload: PatientCreate, db: Session = Depends(get_db), _=De
     data = payload.model_dump()
     data["uhid"] = data.get("uhid") or _generate_uhid(db)
     data["registration_date"] = data.get("registration_date") or today_str()
+    data["email"] = data.get("email") or ""
     patient = Patient(**data)
     db.add(patient)
     db.commit()

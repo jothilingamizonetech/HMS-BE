@@ -1,8 +1,56 @@
-from pydantic import BaseModel, Field, ConfigDict
-
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 from app.models.store_item import ItemCategory, ItemUnit, ItemStatus, PaymentTerms, VendorStatus
 from app.schemas.common import TimestampedORMBase
+
+
+def normalize_category(v) -> ItemCategory:
+    if not v:
+        return ItemCategory.Pharmaceuticals
+    v_str = str(getattr(v, "value", v)).strip()
+    for cat in ItemCategory:
+        if cat.value.lower() == v_str.lower():
+            return cat
+    med_cats = [
+        "antibiotics", "pain management", "cardiovascular", "diabetes", "respiratory",
+        "gastrointestinal", "allergy", "antifungal", "antiviral", "vitamins",
+        "vaccines", "emergency medicines", "iv fluids", "topical", "steroids", "pharmaceuticals"
+    ]
+    if any(m in v_str.lower() for m in med_cats):
+        return ItemCategory.Pharmaceuticals
+    if "surgical" in v_str.lower():
+        return ItemCategory.Surgical_Supplies
+    if "reagent" in v_str.lower() or "lab" in v_str.lower():
+        return ItemCategory.Lab_Reagents
+    if "equipment" in v_str.lower():
+        return ItemCategory.Medical_Equipment
+    if "consumable" in v_str.lower() or "ppe" in v_str.lower() or "safety" in v_str.lower() or "patient care" in v_str.lower():
+        return ItemCategory.Consumables
+    return ItemCategory.General_Store
+
+
+def normalize_unit(v) -> ItemUnit:
+    if not v:
+        return ItemUnit.Box
+    v_str = str(getattr(v, "value", v)).strip()
+    for u in ItemUnit:
+        if u.value.lower() == v_str.lower():
+            return u
+    if "strip" in v_str.lower():
+        return ItemUnit.Strip
+    if "bottle" in v_str.lower():
+        return ItemUnit.Bottle
+    if "vial" in v_str.lower() or "ampoule" in v_str.lower() or "injection" in v_str.lower():
+        return ItemUnit.Vial
+    if "pack" in v_str.lower():
+        return ItemUnit.Pack
+    if "roll" in v_str.lower():
+        return ItemUnit.Roll
+    if "set" in v_str.lower():
+        return ItemUnit.Set
+    if "box" in v_str.lower():
+        return ItemUnit.Box
+    return ItemUnit.Piece
 
 
 class ItemMasterBase(BaseModel):
@@ -25,6 +73,16 @@ class ItemMasterBase(BaseModel):
     storage_location: str | None = Field(None, alias="storageLocation")
     description: str | None = None
     unit_price: float = Field(0, alias="unitPrice")
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def validate_category(cls, v):
+        return normalize_category(v)
+
+    @field_validator("unit", mode="before")
+    @classmethod
+    def validate_unit(cls, v):
+        return normalize_unit(v)
 
 
 class ItemMasterCreate(ItemMasterBase):
@@ -54,6 +112,20 @@ class ItemMasterUpdate(BaseModel):
     status: ItemStatus | None = None
     current_stock: int | None = Field(None, alias="currentStock")
     unit_price: float | None = Field(None, alias="unitPrice")
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def validate_category(cls, v):
+        if v is None:
+            return None
+        return normalize_category(v)
+
+    @field_validator("unit", mode="before")
+    @classmethod
+    def validate_unit(cls, v):
+        if v is None:
+            return None
+        return normalize_unit(v)
 
 
 class ItemMasterOut(ItemMasterBase, TimestampedORMBase):
