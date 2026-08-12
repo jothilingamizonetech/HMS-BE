@@ -8,7 +8,7 @@ import {
 import { useHMS } from '../../../context/HMSContext';
 import { useLab } from '../../../context/LabContext';
 import { useAuth } from '../../../context/AuthContext';
-import { fetchConsultationsApi, saveConsultationApi, updateAppointmentStatusApi, createPrescriptionApi, fetchVitalsApi } from '../../../services/api';
+import { fetchConsultationsApi, saveConsultationApi, updateAppointmentStatusApi, createPrescriptionApi, fetchVitalsApi, fetchPatientsApi } from '../../../services/api';
 
 // ─── Interfaces ────────────────────────────────────────────────
 interface DoctorAppointment {
@@ -343,35 +343,78 @@ export const ConsultationPage: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'All' | 'Scheduled' | 'In Progress' | 'Completed'>('All');
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
 
-  // Fetch real appointments from backend
+  // Fetch real appointments & registered patients from backend
   useEffect(() => {
     const fetchAppointments = async () => {
       try {
         const token = localStorage.getItem('hms_token');
         const apiHost = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '').replace(/\/api\/v1$/, '');
+
+        // Cross-reference registered patients to get accurate patient age & gender
+        let patientMap: Record<string, any> = {};
+        try {
+          const patientsList = await fetchPatientsApi();
+          if (Array.isArray(patientsList)) {
+            patientsList.forEach((pt) => {
+              if (pt.uhid) patientMap[pt.uhid.toLowerCase()] = pt;
+              if (pt.id) patientMap[pt.id] = pt;
+              if (pt.mobile) patientMap[pt.mobile] = pt;
+              const fullName = `${pt.firstName || ''} ${pt.lastName || ''}`.trim().toLowerCase();
+              if (fullName) patientMap[fullName] = pt;
+            });
+          }
+        } catch (_) {}
+
         const res = await fetch(`${apiHost}/api/v1/appointments`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data)) {
-            const mapped: DoctorAppointment[] = data.map((a: any) => ({
-              id: a.id || '',
-              patientId: a.patient_uhid || a.patientUhid || a.id || '',
-              patientName: a.patient_name || a.patientName || 'Unknown',
-              patientUhid: a.patient_uhid || a.patientUhid || '',
-              patientAge: a.patient_age || a.patientAge || 0,
-              patientGender: a.patient_gender || a.patientGender || 'Male',
-              patientPhone: a.patient_mobile || a.patientMobile || '',
-              date: a.date || '',
-              timeSlot: a.time_slot || a.timeSlot || '',
-              admissionDateTime: `${a.date || ''} ${a.time_slot || a.timeSlot || ''}`.trim(),
-              department: a.department || '',
-              reason: a.reason || '',
-              type: a.type || 'OPD',
-              status: (a.status === 'Completed' ? 'Completed' : a.status === 'In Progress' ? 'In Progress' : 'Scheduled') as 'Scheduled' | 'In Progress' | 'Completed',
-              tokenNumber: a.token_number || a.tokenNumber || `T-${(a.id || '').slice(-3)}`,
-            }));
+            const mapped: DoctorAppointment[] = data.map((a: any) => {
+              const uhid = (a.patient_uhid || a.patientUhid || '').toLowerCase();
+              const pId = a.patient_id || a.patientId || '';
+              const pMobile = a.patient_mobile || a.patientMobile || '';
+              const pName = (a.patient_name || a.patientName || '').toLowerCase();
+
+              const matchedPt = patientMap[uhid] || patientMap[pId] || patientMap[pMobile] || patientMap[pName];
+
+              let ageVal = Number(a.patient_age || a.patientAge || a.age || 0);
+              if (!ageVal && matchedPt) {
+                ageVal = Number(matchedPt.age || 0);
+                if (!ageVal && matchedPt.dob) {
+                  const bDate = new Date(matchedPt.dob);
+                  if (!isNaN(bDate.getTime())) {
+                    const today = new Date();
+                    let calc = today.getFullYear() - bDate.getFullYear();
+                    const m = today.getMonth() - bDate.getMonth();
+                    if (m < 0 || (m === 0 && today.getDate() < bDate.getDate())) calc--;
+                    if (calc > 0) ageVal = calc;
+                  }
+                }
+              }
+
+              const resolvedAge = ageVal > 0 ? ageVal : 30;
+              const resolvedGender = a.patient_gender || a.patientGender || matchedPt?.gender || 'Male';
+
+              return {
+                id: a.id || '',
+                patientId: a.patient_uhid || a.patientUhid || a.id || '',
+                patientName: a.patient_name || a.patientName || (matchedPt ? `${matchedPt.firstName} ${matchedPt.lastName || ''}`.trim() : 'Unknown'),
+                patientUhid: a.patient_uhid || a.patientUhid || matchedPt?.uhid || '',
+                patientAge: resolvedAge,
+                patientGender: resolvedGender,
+                patientPhone: a.patient_mobile || a.patientMobile || matchedPt?.mobile || '',
+                date: a.date || '',
+                timeSlot: a.time_slot || a.timeSlot || '',
+                admissionDateTime: `${a.date || ''} ${a.time_slot || a.timeSlot || ''}`.trim(),
+                department: a.department || '',
+                reason: a.reason || '',
+                type: a.type || 'OPD',
+                status: (a.status === 'Completed' ? 'Completed' : a.status === 'In Progress' ? 'In Progress' : 'Scheduled') as 'Scheduled' | 'In Progress' | 'Completed',
+                tokenNumber: a.token_number || a.tokenNumber || `T-${(a.id || '').slice(-3)}`,
+              };
+            });
             if (mapped.length > 0) setAppointments(mapped);
           }
         }
@@ -456,10 +499,10 @@ export const ConsultationPage: React.FC = () => {
 
     let matchingReport = selectedAppointment
       ? labReports.find(
-          (r) =>
-            r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
-            r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
-        )
+        (r) =>
+          r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
+          r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
+      )
       : null;
 
     if (!matchingReport && selectedAppointment && labTests.length > 0) {
@@ -960,13 +1003,13 @@ export const ConsultationPage: React.FC = () => {
         prev.map((m) =>
           m.id === editingMedId
             ? {
-                ...m,
-                name: medName,
-                dosage: medDosage || '1 tablet',
-                frequency: medFreq,
-                duration: medDuration,
-                instructions: medInstructions || 'After meals',
-              }
+              ...m,
+              name: medName,
+              dosage: medDosage || '1 tablet',
+              frequency: medFreq,
+              duration: medDuration,
+              instructions: medInstructions || 'After meals',
+            }
             : m
         )
       );
@@ -1127,11 +1170,10 @@ export const ConsultationPage: React.FC = () => {
             </div>
             <button
               onClick={() => setSelectedDateFilter(new Date().toISOString().split('T')[0])}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                selectedDateFilter === new Date().toISOString().split('T')[0]
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedDateFilter === new Date().toISOString().split('T')[0]
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-              }`}
+                }`}
             >
               Today
             </button>
@@ -1531,10 +1573,10 @@ export const ConsultationPage: React.FC = () => {
           {(() => {
             const matchingReport = selectedAppointment
               ? labReports.find(
-                  (r) =>
-                    r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
-                    r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
-                )
+                (r) =>
+                  r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
+                  r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
+              )
               : null;
 
             if (!matchingReport) {
@@ -1556,15 +1598,14 @@ export const ConsultationPage: React.FC = () => {
                       <p className="text-[10px] text-slate-500">Sample Date: {matchingReport.generatedDate}</p>
                     </div>
                     <span
-                      className={`px-3 py-1 rounded-full text-[10px] font-bold ${
-                        matchingReport.doctorReviewStatus === 'Approved'
+                      className={`px-3 py-1 rounded-full text-[10px] font-bold ${matchingReport.doctorReviewStatus === 'Approved'
                           ? 'bg-emerald-100 text-emerald-800'
                           : matchingReport.doctorReviewStatus === 'Re-Test Requested'
-                          ? 'bg-purple-100 text-purple-800'
-                          : matchingReport.doctorReviewStatus === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-amber-100 text-amber-800 animate-pulse'
-                      }`}
+                            ? 'bg-purple-100 text-purple-800'
+                            : matchingReport.doctorReviewStatus === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800 animate-pulse'
+                        }`}
                     >
                       Status: {matchingReport.doctorReviewStatus}
                     </span>
@@ -1589,9 +1630,9 @@ export const ConsultationPage: React.FC = () => {
                             const labRes = labResults.find(
                               (lr) =>
                                 (lr.patientUhid.toLowerCase() === matchingReport.patientUhid.toLowerCase() ||
-                                 lr.patientName.toLowerCase() === matchingReport.patientName.toLowerCase()) &&
+                                  lr.patientName.toLowerCase() === matchingReport.patientName.toLowerCase()) &&
                                 (lr.testName.toLowerCase().trim().includes(r.testName.toLowerCase().trim()) ||
-                                 r.testName.toLowerCase().trim().includes(lr.testName.toLowerCase().trim()))
+                                  r.testName.toLowerCase().trim().includes(lr.testName.toLowerCase().trim()))
                             );
                             const val = r.resultValue && !['(Pending)', 'Pending Result', 'Pending Lab Analysis'].includes(r.resultValue)
                               ? r.resultValue
@@ -1605,13 +1646,12 @@ export const ConsultationPage: React.FC = () => {
                                 <td className="py-2.5 px-3 text-slate-600">{r.referenceRange || labRes?.referenceRange || '70 - 140'}</td>
                                 <td className="py-2.5 px-3">
                                   <span
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                      flagVal === 'Critical'
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${flagVal === 'Critical'
                                         ? 'bg-rose-100 text-rose-700'
                                         : flagVal === 'High'
-                                        ? 'bg-amber-100 text-amber-800'
-                                        : 'bg-emerald-100 text-emerald-700'
-                                    }`}
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-emerald-100 text-emerald-700'
+                                      }`}
                                   >
                                     {flagVal}
                                   </span>
@@ -2096,10 +2136,10 @@ export const ConsultationPage: React.FC = () => {
           {(() => {
             const matchingReport = selectedAppointment
               ? labReports.find(
-                  (r) =>
-                    r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
-                    r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
-                )
+                (r) =>
+                  r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
+                  r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
+              )
               : null;
 
             if (!matchingReport) return null;
@@ -2113,15 +2153,14 @@ export const ConsultationPage: React.FC = () => {
                       <p className="text-[10px] text-slate-500">Sample Date: {matchingReport.generatedDate}</p>
                     </div>
                     <span
-                      className={`px-3 py-1 rounded-full text-[10px] font-bold ${
-                        matchingReport.doctorReviewStatus === 'Approved'
+                      className={`px-3 py-1 rounded-full text-[10px] font-bold ${matchingReport.doctorReviewStatus === 'Approved'
                           ? 'bg-emerald-100 text-emerald-800'
                           : matchingReport.doctorReviewStatus === 'Re-Test Requested'
-                          ? 'bg-purple-100 text-purple-800'
-                          : matchingReport.doctorReviewStatus === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-amber-100 text-amber-800 animate-pulse'
-                      }`}
+                            ? 'bg-purple-100 text-purple-800'
+                            : matchingReport.doctorReviewStatus === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800'
+                              : 'bg-amber-100 text-amber-800 animate-pulse'
+                        }`}
                     >
                       Status: {matchingReport.doctorReviewStatus}
                     </span>
@@ -2150,13 +2189,12 @@ export const ConsultationPage: React.FC = () => {
                               <td className="py-2.5 px-3 text-slate-600">{r.referenceRange}</td>
                               <td className="py-2.5 px-3">
                                 <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                    r.flag === 'Critical'
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.flag === 'Critical'
                                       ? 'bg-rose-100 text-rose-700'
                                       : r.flag === 'High'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : 'bg-emerald-100 text-emerald-700'
-                                  }`}
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-emerald-100 text-emerald-700'
+                                    }`}
                                 >
                                   {r.flag || 'Normal'}
                                 </span>
@@ -2314,10 +2352,10 @@ export const ConsultationPage: React.FC = () => {
                       {(() => {
                         const matchingReport = selectedAppointment
                           ? labReports.find(
-                              (r) =>
-                                r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
-                                r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
-                            )
+                            (r) =>
+                              r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
+                              r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
+                          )
                           : null;
 
                         const results = matchingReport?.testResults?.filter(
@@ -2336,11 +2374,10 @@ export const ConsultationPage: React.FC = () => {
                               <td className="py-3 px-3.5 text-slate-600">{r.referenceRange || '70 - 99 mg/dL'}</td>
                               <td className="py-3 px-3.5">
                                 <span
-                                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                                    r.flag === 'Critical' || r.flag === 'High'
+                                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${r.flag === 'Critical' || r.flag === 'High'
                                       ? 'bg-amber-100 text-amber-800 border border-amber-200'
                                       : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                  }`}
+                                    }`}
                                 >
                                   {r.flag || 'High'}
                                 </span>
@@ -2377,11 +2414,10 @@ export const ConsultationPage: React.FC = () => {
                       Saved Doctor Instruction / Reply:
                     </span>
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        popupStatus === 'Re-Test Requested'
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${popupStatus === 'Re-Test Requested'
                           ? 'bg-purple-100 text-purple-800 border border-purple-200'
                           : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                      }`}
+                        }`}
                     >
                       {popupStatus}
                     </span>
