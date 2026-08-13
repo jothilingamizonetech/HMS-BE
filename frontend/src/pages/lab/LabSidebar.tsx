@@ -88,14 +88,14 @@ export const LabSidebar: React.FC<LabSidebarProps> = ({ mobileOpen, setMobileOpe
             <span>Test Master</span>
           </NavLink>
 
-          {/* Result Entry */}
+          {/* OP Register */}
           <NavLink
             to="/lab/result-entry"
             onClick={() => setMobileOpen(false)}
             className={navItemClass}
           >
             <FileSpreadsheet className="w-4 h-4 text-amber-600" />
-            <span>Result Entry</span>
+            <span>OP Register</span>
           </NavLink>
 
           {/* Report Generation */}

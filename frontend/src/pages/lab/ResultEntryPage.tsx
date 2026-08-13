@@ -465,11 +465,11 @@ export const ResultEntryPage: React.FC = () => {
         <div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-              LIS Patient Result Entry Console
+              LIS Patient OP Register Console
             </span>
           </div>
           <h1 className="text-xl font-bold text-slate-900 mt-2 tracking-tight">
-            Patient Direct Test Result Entry
+            Patient Direct OP Register
           </h1>
           <p className="text-xs text-slate-500 mt-1">
             Directly select a patient to enter test values for all assigned tests simultaneously in a single structured view.
@@ -847,7 +847,7 @@ export const ResultEntryPage: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-100 pb-4">
               <div>
                 <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full uppercase border border-amber-200">
-                  Batch Multi-Test Result Entry
+                  Batch Multi-Test OP Register
                 </span>
                 <h3 className="text-lg font-bold text-slate-900 mt-1">
                   Enter Results for {selectedOrder.patientName}

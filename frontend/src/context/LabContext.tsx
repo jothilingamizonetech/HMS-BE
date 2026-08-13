@@ -406,7 +406,7 @@ export const LabProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       body: JSON.stringify({ status: 'Completed' }),
     }).catch(e => { console.warn('completeProcessing sync failed:', e); addToast('error', 'Sync Failed', 'Completing sample processing failed to save to the server. Please retry -- your on-screen change may not persist.'); });
     if (target) {
-      addToast('success', 'Processing Completed', `${target.testName} completed. Ready for Result Entry.`);
+      addToast('success', 'Processing Completed', `${target.testName} completed. Ready for OP Register.`);
     }
   };
 
