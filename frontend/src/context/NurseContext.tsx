@@ -144,6 +144,7 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
               recordedBy: v.recorded_by || v.recordedBy || 'Nurse',
               date: v.date || v.recorded_at?.split('T')[0] || v.recordedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
               time: v.time || v.recorded_at?.split('T')[1]?.substring(0, 5) || v.recordedAt?.split('T')[1]?.substring(0, 5) || '08:00',
+              branch: v.branch || v.branch_name || 'Main Branch',
             });
           }
         });
@@ -307,8 +308,15 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateVitalSign = async (id: string, updated: Partial<VitalSign>) => {
+    const bpStr = updated.bloodPressure || '120/80';
+    const [bpSys, bpDia] = bpStr.split('/').map(Number);
+    const payload = {
+      ...updated,
+      bpSys: bpSys || 120,
+      bpDia: bpDia || 80,
+    };
     try {
-      await updateVitalApi(id, updated);
+      await updateVitalApi(id, payload);
       setVitals((prev) => prev.map((v) => (v.id === id ? { ...v, ...updated } : v)));
       addToast('success', 'Vitals Updated', 'Vital record modified successfully.');
     } catch (err) {

@@ -20,12 +20,14 @@ import {
 } from 'lucide-react';
 import { useNurse } from '../../context/NurseContext';
 import { useHMS } from '../../context/HMSContext';
+import { useAuth } from '../../context/AuthContext';
 import { StaffShiftWidget } from '../../components/common/StaffShiftWidget';
 import { NurseBranchSelector } from '../../components/nurse/NurseBranchSelector';
 import { NurseActivity } from '../../types/nurse';
 
 export const NurseDashboard: React.FC = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { vitals, transfers, notes, medications, activities, selectedBranch } = useNurse();
   const { patients, beds, appointments, ipdAdmissions } = useHMS();
 
@@ -37,7 +39,7 @@ export const NurseDashboard: React.FC = () => {
   const matchBranch = (itemBranch?: string) => {
     const activeBranch = selectedBranch && selectedBranch !== 'All' ? selectedBranch : (user?.branch || '');
     if (!activeBranch || activeBranch === 'All' || activeBranch.toLowerCase() === 'all') return true;
-    if (!itemBranch) return false;
+    if (!itemBranch) return true;
     const sNorm = activeBranch.toLowerCase().replace(/branch/g, '').replace(/hospital/g, '').replace(/cauvery/g, '').replace(/care/g, '').trim();
     const bNorm = itemBranch.toLowerCase().replace(/branch/g, '').replace(/hospital/g, '').replace(/cauvery/g, '').replace(/care/g, '').trim();
     return bNorm.includes(sNorm) || sNorm.includes(bNorm) || bNorm === sNorm;

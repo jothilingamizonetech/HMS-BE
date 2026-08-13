@@ -57,6 +57,17 @@ def create_vital(payload: dict, db: Session = Depends(get_db), _=Depends(get_cur
     bp_dia = payload.get("bpDia") or payload.get("bp_dia") or 80
     bp_str = payload.get("bloodPressure") or payload.get("blood_pressure") or f"{bp_sys}/{bp_dia}"
 
+    if bp_str and "/" in str(bp_str) and (not payload.get("bpSys") and not payload.get("bp_sys")):
+        try:
+            parts = str(bp_str).split("/")
+            bp_sys = float(parts[0])
+            bp_dia = float(parts[1])
+        except (ValueError, IndexError):
+            pass
+
+    pulse_val = payload.get("pulseRate") or payload.get("pulse_rate") or payload.get("pulse") or 72
+    resp_val = payload.get("respiratoryRate") or payload.get("respiratory_rate") or payload.get("respRate") or payload.get("resp_rate") or 18
+
     vital = PatientVital(
         patient_uhid=payload.get("patientUhid") or payload.get("patient_uhid") or "",
         patient_name=payload.get("patientName") or payload.get("patient_name"),
@@ -71,10 +82,10 @@ def create_vital(payload: dict, db: Session = Depends(get_db), _=Depends(get_cur
         blood_pressure=bp_str,
         bp_sys=bp_sys,
         bp_dia=bp_dia,
-        pulse_rate=payload.get("pulseRate") or payload.get("pulse") or 72,
-        pulse=payload.get("pulse") or payload.get("pulseRate") or 72,
-        respiratory_rate=payload.get("respiratoryRate") or payload.get("respRate") or payload.get("resp_rate") or 18,
-        resp_rate=payload.get("resp_rate") or payload.get("respiratoryRate") or 18,
+        pulse_rate=pulse_val,
+        pulse=pulse_val,
+        respiratory_rate=resp_val,
+        resp_rate=resp_val,
         spo2=payload.get("spO2") or payload.get("spo2") or 98,
         blood_sugar=payload.get("bloodSugar") or payload.get("blood_sugar"),
         pain_scale=payload.get("painScale") or payload.get("pain_scale"),
@@ -96,9 +107,45 @@ def update_vital(vital_id: str, payload: dict, db: Session = Depends(get_db), _=
     vital = db.get(PatientVital, vital_id)
     if not vital:
         raise HTTPException(status_code=404, detail="Vital record not found")
+
+    mapping = {
+        "patientUhid": "patient_uhid",
+        "patientName": "patient_name",
+        "doctorId": "doctor_id",
+        "doctorName": "doctor_name",
+        "bloodPressure": "blood_pressure",
+        "bpSys": "bp_sys",
+        "bpDia": "bp_dia",
+        "pulseRate": "pulse_rate",
+        "pulse": "pulse_rate",
+        "respiratoryRate": "respiratory_rate",
+        "respRate": "resp_rate",
+        "spO2": "spo2",
+        "bloodSugar": "blood_sugar",
+        "painScale": "pain_scale",
+        "recordedBy": "recorded_by",
+        "recordedAt": "recorded_at",
+    }
+
+    bp_str = payload.get("bloodPressure") or payload.get("blood_pressure")
+    if bp_str and "/" in str(bp_str):
+        try:
+            parts = str(bp_str).split("/")
+            vital.bp_sys = float(parts[0])
+            vital.bp_dia = float(parts[1])
+            vital.blood_pressure = str(bp_str)
+        except (ValueError, IndexError):
+            pass
+
     for k, v in payload.items():
-        if hasattr(vital, k):
-            setattr(vital, k, v)
+        attr_name = mapping.get(k, k)
+        if hasattr(vital, attr_name) and attr_name not in ("id", "created_at"):
+            setattr(vital, attr_name, v)
+            if attr_name == "pulse_rate":
+                vital.pulse = v
+            elif attr_name == "respiratory_rate":
+                vital.resp_rate = v
+
     db.commit()
     db.refresh(vital)
     log_audit(f"PUT /clinical/vitals/{vital_id}", payload, payload, vital, vital)
@@ -224,14 +271,37 @@ def create_medication_log(payload: dict, db: Session = Depends(get_db), _=Depend
 def update_medication_log(med_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_edit):
     log = db.get(MedicationLog, med_id)
     if not log:
-        raise HTTPException(status_code=404, detail="Medication log not found")
+        log = MedicationLog(
+            patient_uhid=payload.get("patientUhid") or payload.get("patient_uhid") or "",
+            patient_name=payload.get("patientName") or payload.get("patient_name"),
+            admission_id=payload.get("admissionId") or payload.get("admission_id"),
+            ward=payload.get("ward") or "General Ward",
+            doctor_name=payload.get("doctorName") or payload.get("doctor_name"),
+            medicine_name=payload.get("medicineName") or payload.get("medicine_name") or "",
+            dosage=payload.get("dosage") or "1 Tablet",
+            route=payload.get("route") or "Oral",
+            frequency=payload.get("frequency") or "Once Daily (OD)",
+            scheduled_time=payload.get("scheduledTime") or payload.get("scheduled_time") or "08:00 AM",
+            administered_at=payload.get("administeredAt") or payload.get("administered_at") or payload.get("givenTime") or payload.get("given_time"),
+            given_time=payload.get("givenTime") or payload.get("given_time"),
+            status=payload.get("status") or "Given",
+            reason_if_missed=payload.get("reasonIfMissed") or payload.get("reason_if_missed"),
+            remarks=payload.get("remarks") or "",
+            nurse_name=payload.get("nurseName") or payload.get("nurse_name") or payload.get("administeredBy") or payload.get("administered_by") or "Nurse",
+        )
+        db.add(log)
+        db.commit()
+        db.refresh(log)
+        log_audit(f"POST /clinical/medications/{med_id}", payload, payload, log, log)
+        return log
+
     for k, v in payload.items():
         if hasattr(log, k):
             setattr(log, k, v)
         elif k == "givenTime":
             setattr(log, "given_time", v)
             setattr(log, "administered_at", v)
-        elif k == "nurseName":
+        elif k == "nurseName" or k == "administeredBy":
             setattr(log, "nurse_name", v)
     db.commit()
     db.refresh(log)

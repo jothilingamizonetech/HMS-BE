@@ -425,7 +425,7 @@ def list_pharmacy_transfers(
     outward_records = db.scalars(outward_stmt).all()
     pharmacy_outwards = [
         r for r in outward_records
-        if (r.department and "pharmacy" in r.department.lower()) or (r.issued_to_department and "pharmacy" in r.issued_to_department.lower()) or True
+        if (r.department and "pharmacy" in r.department.lower()) or (r.issued_to_department and "pharmacy" in r.issued_to_department.lower())
     ]
 
     transfer_stmt = select(StockTransfer).order_by(StockTransfer.created_at.desc())
@@ -436,8 +436,42 @@ def list_pharmacy_transfers(
     ]
 
     combined = []
+    seen_keys = set()
+
+    for t in pharmacy_transfers:
+        t_status = t.status.value if hasattr(t.status, "value") else str(t.status)
+        status_str = "Approved" if t_status in ["Completed", "Received", "Approved"] else "Pending Approval"
+        item_code = (t.item_code or "").strip().lower()
+        qty = t.quantity
+        date_str = str(t.transfer_date or t.date or "")
+        dedup_key = f"{item_code}_{qty}_{date_str}"
+
+        seen_keys.add(dedup_key)
+        combined.append({
+            "id": t.id,
+            "transferNumber": t.transfer_number,
+            "type": "Stock Transfer",
+            "itemCode": t.item_code,
+            "itemName": t.item_name,
+            "quantity": t.quantity,
+            "batchNumber": t.batch_number or "STORE-BATCH",
+            "sender": t.requested_by or "Store Manager",
+            "destination": t.destination or "Pharmacy",
+            "date": t.transfer_date or t.date,
+            "status": status_str,
+            "createdAt": t.created_at.isoformat() if hasattr(t, "created_at") and t.created_at else t.transfer_date,
+        })
 
     for o in pharmacy_outwards:
+        item_code = (o.item_code or "").strip().lower()
+        qty = o.quantity
+        date_str = str(o.date or "")
+        dedup_key = f"{item_code}_{qty}_{date_str}"
+
+        if dedup_key in seen_keys:
+            continue
+
+        seen_keys.add(dedup_key)
         status_val = getattr(o, "status", None) or "Pending Approval"
         combined.append({
             "id": o.id,
@@ -452,23 +486,6 @@ def list_pharmacy_transfers(
             "date": o.date,
             "status": status_val,
             "createdAt": o.created_at.isoformat() if hasattr(o, "created_at") and o.created_at else o.date,
-        })
-
-    for t in pharmacy_transfers:
-        t_status = t.status.value if hasattr(t.status, "value") else str(t.status)
-        combined.append({
-            "id": t.id,
-            "transferNumber": t.transfer_number,
-            "type": "Stock Transfer",
-            "itemCode": t.item_code,
-            "itemName": t.item_name,
-            "quantity": t.quantity,
-            "batchNumber": t.batch_number or "STORE-BATCH",
-            "sender": t.requested_by or "Store Manager",
-            "destination": t.destination or "Pharmacy",
-            "date": t.transfer_date or t.date,
-            "status": "Approved" if t_status == "Completed" else "Pending Approval",
-            "createdAt": t.created_at.isoformat() if hasattr(t, "created_at") and t.created_at else t.transfer_date,
         })
 
     combined.sort(key=lambda x: str(x.get("createdAt", "")), reverse=True)
@@ -492,115 +509,36 @@ def approve_pharmacy_transfer(
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    Approves a store stock transfer/outward issue, stores approval status in DB,
-    and automatically adds the transferred stock into the Pharmacy Medicine inventory.
-    Sends notification to Pharmacy & Store Manager.
+    Approves a store stock transfer/outward issue in DB so it appears in '+ Add Medicine' dropdown.
+    Does NOT auto-add to Medicine List until pharmacist sets selling price and saves in Add Medicine modal.
     """
-    from app.models.pharmacy import Medicine, PharmacyBatch
     from app.services.notification_service import notify_user_or_role
-    import random
 
     transfer = db.get(StockTransfer, transfer_id)
     outward = db.get(StockOutward, transfer_id) if not transfer else None
 
     if transfer is not None:
         item_name = transfer.item_name
-        item_code = transfer.item_code
         quantity = transfer.quantity
-        batch_number = transfer.batch_number or f"STORE-BATCH-{transfer_id[:6]}"
         sender = transfer.requested_by or "Store Manager"
-        branch = transfer.branch
         transfer_ref = transfer.transfer_number
         transfer.status = TransferStatus.Completed
     elif outward is not None:
         item_name = outward.item_name
-        item_code = outward.item_code
         quantity = outward.quantity
-        batch_number = outward.batch_number or f"STORE-BATCH-{transfer_id[:6]}"
         sender = outward.issued_by or "Store Manager"
-        branch = outward.branch
         transfer_ref = outward.outward_number or transfer_id
         setattr(outward, "status", "Approved")
     else:
         raise HTTPException(status_code=404, detail="Store transfer record not found in database.")
-
-    clean_name = item_name.strip()
-    clean_code = item_code.strip()
-
-    med = db.scalar(
-        select(Medicine).where(
-            or_(
-                func.lower(Medicine.name) == clean_name.lower(),
-                func.lower(Medicine.code) == clean_code.lower(),
-            )
-        )
-    )
-
-    if med:
-        med.current_stock += quantity
-    else:
-        med = Medicine(
-            code=clean_code or f"MED-{random.randint(1000, 9999)}",
-            name=clean_name,
-            generic_name=clean_name,
-            brand="Store Supply",
-            category="Pharmaceuticals",
-            manufacturer=sender,
-            dosage_form="Tablet/Capsule",
-            strength="Standard",
-            unit="Box/Strip",
-            purchase_price=50.0,
-            selling_price=65.0,
-            storage_condition="Room Temp",
-            rack_location="Main Rack A-01",
-            status="Active",
-            current_stock=quantity,
-            min_stock=10,
-            max_stock=500,
-            reorder_level=20,
-            branch=branch or current_user.branch,
-        )
-        db.add(med)
-        db.commit()
-        db.refresh(med)
-
-    batch = db.scalar(
-        select(PharmacyBatch).where(
-            PharmacyBatch.medicine_id == med.id,
-            PharmacyBatch.batch_number == batch_number,
-        )
-    )
-    if not batch:
-        batch = db.scalar(select(PharmacyBatch).where(PharmacyBatch.medicine_id == med.id))
-
-    if batch:
-        batch.available_quantity += quantity
-        batch.quantity_received += quantity
-        batch.batch_status = "Available"
-    else:
-        batch = PharmacyBatch(
-            batch_number=batch_number,
-            medicine_id=med.id,
-            medicine_name=med.name,
-            supplier_name=sender,
-            manufacturing_date=datetime.now().strftime("%Y-%m-%d"),
-            expiry_date="2027-12-31",
-            purchase_price=med.purchase_price,
-            selling_price=med.selling_price,
-            quantity_received=quantity,
-            available_quantity=quantity,
-            batch_status="Available",
-            branch=med.branch,
-        )
-        db.add(batch)
 
     db.commit()
 
     try:
         notify_user_or_role(
             db,
-            title="Stock Transfer Approved & Received 🎉",
-            message=f"Pharmacy approved {quantity} units of {item_name} sent by {sender}. Inventory stock updated.",
+            title="Stock Transfer Approved 🎉",
+            message=f"Pharmacy approved {quantity} units of {item_name} (Ref #{transfer_ref}). Go to + Add Medicine to set selling price and add to inventory.",
             module="Pharmacy",
             event_type="stock_transfer_approved",
             recipient_role="Pharmacy",
@@ -608,8 +546,8 @@ def approve_pharmacy_transfer(
         )
         notify_user_or_role(
             db,
-            title="Stock Transfer Received by Pharmacy",
-            message=f"Pharmacy received {quantity} units of {item_name} (Transfer #{transfer_ref}).",
+            title="Stock Transfer Approved by Pharmacy",
+            message=f"Pharmacy approved {quantity} units of {item_name} (Ref #{transfer_ref}).",
             module="Store",
             event_type="stock_transfer_received",
             recipient_role="Store Manager",
@@ -619,12 +557,7 @@ def approve_pharmacy_transfer(
         pass
 
     return {
-        "message": f"Successfully approved {quantity} units of {item_name}. Stock updated in Pharmacy database.",
-        "medicine": {
-            "id": med.id,
-            "name": med.name,
-            "newCurrentStock": med.current_stock,
-        }
+        "message": f"Approved {quantity} units of {item_name}. Open '+ Add Medicine' to set selling price and add to inventory.",
     }
 
 

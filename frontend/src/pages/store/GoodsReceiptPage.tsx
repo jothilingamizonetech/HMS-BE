@@ -163,14 +163,17 @@ export const GoodsReceiptPage: React.FC = () => {
       received_date: receivedDate,
       remarks,
       status: 'Completed',
-      items: grnItems.map((i) => ({
-        item_id: i.itemId,
-        item_code: i.itemCode,
-        item_name: i.itemName,
-        received_quantity: i.receivedQuantity,
-        accepted_quantity: i.acceptedQuantity,
-        rejected_quantity: i.rejectedQuantity,
-      })),
+      items: grnItems.map((i) => {
+        const isValidUuid = i.itemId && i.itemId.length > 20 && !i.itemId.startsWith('poi-');
+        return {
+          item_id: isValidUuid ? i.itemId : null,
+          item_code: i.itemCode || 'MED-001',
+          item_name: i.itemName || 'Item',
+          received_quantity: Number(i.receivedQuantity || 0),
+          accepted_quantity: Number(i.acceptedQuantity || 0),
+          rejected_quantity: Number(i.rejectedQuantity || 0),
+        };
+      }),
     };
 
     try {

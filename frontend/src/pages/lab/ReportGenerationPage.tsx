@@ -22,7 +22,7 @@ import {
 
 export const ReportGenerationPage: React.FC = () => {
   const { labReports, testMasterList, labResults, updateReportStatus, updateLabReport, doctorReviewReport } = useLab();
-  const { addToast } = useHMS();
+  const { addToast, patients } = useHMS();
 
   // Search & Filter
   const [searchQuery, setSearchQuery] = useState('');
@@ -168,6 +168,8 @@ export const ReportGenerationPage: React.FC = () => {
     setActiveReport(updated);
 
     await updateLabReport(activeReport.id, {
+      patientName: activeReport.patientName,
+      reportNumber: activeReport.reportNumber,
       doctorComments: editForm.doctorComments,
       testResults: updatedTestResults,
     });
@@ -318,13 +320,27 @@ export const ReportGenerationPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {paginatedReports.length > 0 ? (
-                paginatedReports.map((rep) => (
-                  <tr key={rep.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3 px-4 font-bold text-blue-600 font-mono whitespace-nowrap">{rep.reportNumber}</td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <p className="font-bold text-slate-900">{rep.patientName}</p>
-                      <p className="text-[10px] text-blue-600 font-semibold">{rep.patientUhid}</p>
-                    </td>
+                paginatedReports.map((rep) => {
+                  const patMatch = patients?.find(
+                    (p) => p.uhid.toLowerCase().trim() === rep.patientUhid.toLowerCase().trim() || p.id === rep.patientUhid
+                  );
+                  const age = patMatch?.age || rep.patientAge || 30;
+                  const gender = patMatch?.gender || rep.patientGender || 'Male';
+                  const bloodGroup = patMatch?.bloodGroup || 'O+';
+
+                  return (
+                    <tr key={rep.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 font-bold text-blue-600 font-mono whitespace-nowrap">{rep.reportNumber}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <p className="font-bold text-slate-900">{rep.patientName}</p>
+                        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 mt-0.5">
+                          <span className="text-blue-600 font-bold">{rep.patientUhid}</span>
+                          <span>•</span>
+                          <span>{age} Yrs / {gender}</span>
+                          <span>•</span>
+                          <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100">{bloodGroup}</span>
+                        </div>
+                      </td>
                     <td className="py-3 px-4 whitespace-nowrap">
                       <p className="font-semibold text-slate-800">{rep.doctorName}</p>
                       <p className="text-[10px] text-slate-400">{rep.department}</p>
@@ -425,7 +441,8 @@ export const ReportGenerationPage: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))
+                );
+              })
               ) : (
                 <tr>
                   <td colSpan={9} className="py-8 text-center text-slate-400">
@@ -492,19 +509,31 @@ export const ReportGenerationPage: React.FC = () => {
             </div>
 
             {/* Patient & Doctor Demographics Grid */}
-            <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
-              <div className="space-y-1">
-                <p><span className="text-slate-400 font-bold uppercase text-[10px]">Patient Name:</span> <strong className="text-slate-900">{activeReport.patientName}</strong></p>
-                <p><span className="text-slate-400 font-bold uppercase text-[10px]">UHID:</span> <strong className="text-blue-600">{activeReport.patientUhid}</strong></p>
-                <p><span className="text-slate-400 font-bold uppercase text-[10px]">Age / Gender:</span> <strong>{activeReport.patientAge} Years / {activeReport.patientGender}</strong></p>
-              </div>
+            {(() => {
+              const activePatMatch = patients?.find(
+                (p) => p.uhid.toLowerCase().trim() === activeReport.patientUhid.toLowerCase().trim() || p.id === activeReport.patientUhid
+              );
+              const activeAge = activePatMatch?.age || activeReport.patientAge || 30;
+              const activeGender = activePatMatch?.gender || activeReport.patientGender || 'Male';
+              const activeBloodGroup = activePatMatch?.bloodGroup || 'O+';
 
-              <div className="space-y-1 text-right sm:text-left">
-                <p><span className="text-slate-400 font-bold uppercase text-[10px]">Referred By:</span> <strong>{activeReport.doctorName}</strong></p>
-                <p><span className="text-slate-400 font-bold uppercase text-[10px]">Department:</span> <strong>{activeReport.department}</strong></p>
-                <p><span className="text-slate-400 font-bold uppercase text-[10px]">Report Date:</span> <strong>{activeReport.generatedDate}</strong></p>
-              </div>
-            </div>
+              return (
+                <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
+                  <div className="space-y-1">
+                    <p><span className="text-slate-400 font-bold uppercase text-[10px]">Patient Name:</span> <strong className="text-slate-900">{activeReport.patientName}</strong></p>
+                    <p><span className="text-slate-400 font-bold uppercase text-[10px]">UHID:</span> <strong className="text-blue-600">{activeReport.patientUhid}</strong></p>
+                    <p><span className="text-slate-400 font-bold uppercase text-[10px]">Age / Gender:</span> <strong>{activeAge} Years / {activeGender}</strong></p>
+                    <p><span className="text-slate-400 font-bold uppercase text-[10px]">Blood Group:</span> <strong className="text-rose-600 font-bold">{activeBloodGroup}</strong></p>
+                  </div>
+
+                  <div className="space-y-1 text-right sm:text-left">
+                    <p><span className="text-slate-400 font-bold uppercase text-[10px]">Referred By:</span> <strong>{activeReport.doctorName}</strong></p>
+                    <p><span className="text-slate-400 font-bold uppercase text-[10px]">Department:</span> <strong>{activeReport.department}</strong></p>
+                    <p><span className="text-slate-400 font-bold uppercase text-[10px]">Report Date:</span> <strong>{activeReport.generatedDate}</strong></p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Test Results Table */}
             <div className="space-y-3">

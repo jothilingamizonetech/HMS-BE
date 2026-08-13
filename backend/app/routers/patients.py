@@ -78,14 +78,51 @@ def list_patients(
 @router.post("", response_model=PatientOut, status_code=status.HTTP_201_CREATED)
 def register_patient(payload: PatientCreate, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
     data = payload.model_dump()
-    data["uhid"] = data.get("uhid") or _generate_uhid(db)
-    data["registration_date"] = data.get("registration_date") or today_str()
-    data["email"] = data.get("email") or ""
-    patient = Patient(**data)
-    db.add(patient)
-    db.commit()
-    db.refresh(patient)
-    log_audit("POST /patients", payload, data, patient, patient)
+
+    # Reuse existing patient if mobile, UHID, or full name matches
+    target_uhid = (data.get("uhid") or "").strip()
+    target_mobile = (data.get("mobile") or "").strip()
+    target_name = f"{data.get('first_name', '')} {data.get('last_name', '')}".strip()
+
+    existing = None
+    if target_uhid:
+        existing = db.scalar(select(Patient).where(func.lower(Patient.uhid) == target_uhid.lower()))
+
+    if not existing and target_mobile:
+        clean_mob = "".join(filter(str.isdigit, target_mobile))[-10:]
+        if len(clean_mob) >= 10:
+            all_pts = db.scalars(select(Patient)).all()
+            for p in all_pts:
+                p_mob = "".join(filter(str.isdigit, p.mobile or ""))[-10:]
+                if p_mob and p_mob == clean_mob:
+                    existing = p
+                    break
+        if not existing:
+            existing = db.scalar(select(Patient).where(Patient.mobile == target_mobile))
+
+    if not existing and target_name:
+        all_pts = db.scalars(select(Patient)).all()
+        for p in all_pts:
+            full_n = f"{p.first_name or ''} {p.last_name or ''}".strip().lower()
+            if full_n and full_n == target_name.lower():
+                existing = p
+                break
+
+    if existing:
+        apply_updates(existing, {k: v for k, v in data.items() if v and k != "uhid"})
+        db.commit()
+        db.refresh(existing)
+        log_audit("POST /patients (reused)", payload, data, existing, existing)
+        patient = existing
+    else:
+        data["uhid"] = data.get("uhid") or _generate_uhid(db)
+        data["registration_date"] = data.get("registration_date") or today_str()
+        data["email"] = data.get("email") or ""
+        patient = Patient(**data)
+        db.add(patient)
+        db.commit()
+        db.refresh(patient)
+        log_audit("POST /patients", payload, data, patient, patient)
 
     is_emergency = getattr(patient, 'status', '').lower() == 'emergency' or getattr(patient, 'category', '').lower() == 'emergency'
     if is_emergency:

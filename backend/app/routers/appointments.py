@@ -91,14 +91,39 @@ def book_appointment(payload: AppointmentCreate, db: Session = Depends(get_db), 
 
     # Fetch/verify or auto-create Patient details in DB with unique ID
     pat = None
-    if data.get("patient_uhid"):
-        pat = db.scalar(select(Patient).where(Patient.uhid == data["patient_uhid"]))
-    if not pat and data.get("patient_mobile"):
-        pat = db.scalar(select(Patient).where(Patient.mobile == data["patient_mobile"]))
+    target_uhid = (data.get("patient_uhid") or "").strip()
+    target_mobile = (data.get("patient_mobile") or "").strip()
+    target_name = (data.get("patient_name") or "").strip()
+
+    # 1. Check by UHID
+    if target_uhid:
+        pat = db.scalar(select(Patient).where(func.lower(Patient.uhid) == target_uhid.lower()))
+
+    # 2. Check by Mobile (exact or last 10 digits)
+    if not pat and target_mobile:
+        clean_mob = "".join(filter(str.isdigit, target_mobile))[-10:]
+        if len(clean_mob) >= 10:
+            all_pts = db.scalars(select(Patient)).all()
+            for p in all_pts:
+                p_mob = "".join(filter(str.isdigit, p.mobile or ""))[-10:]
+                if p_mob and p_mob == clean_mob:
+                    pat = p
+                    break
+        if not pat:
+            pat = db.scalar(select(Patient).where(Patient.mobile == target_mobile))
+
+    # 3. Check by Full Name
+    if not pat and target_name:
+        all_pts = db.scalars(select(Patient)).all()
+        for p in all_pts:
+            full_n = f"{p.first_name or ''} {p.last_name or ''}".strip().lower()
+            if full_n and full_n == target_name.lower():
+                pat = p
+                break
 
     if pat:
         data["patient_name"] = f"{pat.first_name} {pat.last_name}".strip()
-        data["patient_mobile"] = pat.mobile
+        data["patient_mobile"] = pat.mobile or target_mobile
         data["patient_id"] = pat.id
         data["patient_uhid"] = pat.uhid
     else:

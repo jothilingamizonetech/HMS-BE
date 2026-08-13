@@ -78,58 +78,79 @@ export const WardTransferPage: React.FC = () => {
     }
   }, [branchPatients]);
 
-  // Dynamically derive ONLY OCCUPIED beds assigned to nurse fetched from DB
+  // Dynamically derive bed status & occupancy assigned to nurse fetched directly from DB
   const allBeds: Bed[] = useMemo(() => {
     const list: Bed[] = [];
+    const dbBeds = (beds || []).filter((b) => matchBranch(b.branch));
 
-    // Filter active IPD admissions (not discharged) matching current branch
+    // Map all DB beds for current branch
+    dbBeds.forEach((b) => {
+      const matchedAdm = (ipdAdmissions || []).find(
+        (adm) =>
+          adm.status !== 'Discharged' &&
+          (adm.bedNumber === b.bedNumber || (b.currentPatientUhid && adm.patientUhid === b.currentPatientUhid))
+      );
+      const matchedPatient = b.currentPatientUhid
+        ? patients.find((p) => p.uhid === b.currentPatientUhid)
+        : matchedAdm
+        ? patients.find((p) => p.uhid === matchedAdm.patientUhid)
+        : null;
+
+      const isOccupiedInDb = b.status === 'Occupied' || (!!b.currentPatientUhid && b.status !== 'Available' && b.status !== 'Cleaning');
+
+      if (isOccupiedInDb) {
+        list.push({
+          ...b,
+          ward: b.ward || matchedAdm?.ward || 'ICU',
+          roomNumber: b.roomNumber || matchedAdm?.roomNumber || '101',
+          category: b.category || ((b.ward || '').toLowerCase().includes('icu') ? 'ICU' : 'Standard'),
+          status: 'Occupied',
+          currentPatientUhid: b.currentPatientUhid || matchedAdm?.patientUhid,
+          currentPatientName:
+            b.currentPatientName ||
+            matchedAdm?.patientName ||
+            (matchedPatient ? `${matchedPatient.firstName} ${matchedPatient.lastName}` : undefined),
+          admittedDate: b.admittedDate || matchedAdm?.admissionDate || 'Today',
+          branch: b.branch || activeBranch,
+        });
+      } else {
+        list.push({
+          ...b,
+          ward: b.ward || 'General Ward',
+          roomNumber: b.roomNumber || '101',
+          category: b.category || 'Standard',
+          status: b.status || 'Available',
+          currentPatientUhid: undefined,
+          currentPatientName: undefined,
+          admittedDate: undefined,
+          branch: b.branch || activeBranch,
+        });
+      }
+    });
+
+    // Also check for active IPD admissions whose bed isn't explicitly in DB beds table yet
     const activeAdmissions = (ipdAdmissions || []).filter(
       (adm) => matchBranch(adm.branch) && adm.status !== 'Discharged'
     );
 
-    // Map each assigned active admission to an Occupied Bed from DB
     activeAdmissions.forEach((adm) => {
-      const matchedDbBed = (beds || []).find(
+      const bedAlreadyAdded = list.some(
         (b) => b.bedNumber === adm.bedNumber || (b.currentPatientUhid && b.currentPatientUhid === adm.patientUhid)
       );
-      const matchedPatient = patients.find((p) => p.uhid === adm.patientUhid);
-
-      list.push({
-        id: matchedDbBed?.id || `adm-bed-${adm.id}`,
-        bedNumber: adm.bedNumber || matchedDbBed?.bedNumber || `BED-${adm.id}`,
-        ward: adm.ward || matchedDbBed?.ward || 'ICU',
-        roomNumber: adm.roomNumber || matchedDbBed?.roomNumber || '101',
-        category: matchedDbBed?.category || ((adm.ward || '').toLowerCase().includes('icu') ? 'ICU' : 'Standard'),
-        status: 'Occupied',
-        currentPatientUhid: adm.patientUhid,
-        currentPatientName:
-          adm.patientName ||
-          matchedDbBed?.currentPatientName ||
-          (matchedPatient ? `${matchedPatient.firstName} ${matchedPatient.lastName}` : undefined),
-        admittedDate: adm.admissionDate || matchedDbBed?.admittedDate || 'Today',
-        branch: adm.branch || matchedDbBed?.branch || activeBranch,
-      });
-    });
-
-    // Also check DB beds table for any explicitly marked 'Occupied' beds matching branch not already added
-    const dbOccupiedBeds = (beds || []).filter(
-      (b) => matchBranch(b.branch) && b.status === 'Occupied'
-    );
-
-    dbOccupiedBeds.forEach((b) => {
-      const exists = list.some(
-        (existing) => existing.bedNumber === b.bedNumber || (b.currentPatientUhid && existing.currentPatientUhid === b.currentPatientUhid)
-      );
-      if (!exists && b.currentPatientUhid) {
-        const matchedPatient = patients.find((p) => p.uhid === b.currentPatientUhid);
+      if (!bedAlreadyAdded) {
+        const matchedPatient = patients.find((p) => p.uhid === adm.patientUhid);
         list.push({
-          ...b,
-          ward: b.ward || 'General Ward',
+          id: `adm-bed-${adm.id}`,
+          bedNumber: adm.bedNumber || `BED-${adm.id}`,
+          ward: adm.ward || 'ICU',
+          roomNumber: adm.roomNumber || '101',
+          category: (adm.ward || '').toLowerCase().includes('icu') ? 'ICU' : 'Standard',
+          status: 'Occupied',
+          currentPatientUhid: adm.patientUhid,
           currentPatientName:
-            b.currentPatientName ||
-            (matchedPatient ? `${matchedPatient.firstName} ${matchedPatient.lastName}` : undefined),
-          admittedDate: b.admittedDate || 'Today',
-          branch: b.branch || activeBranch,
+            adm.patientName || (matchedPatient ? `${matchedPatient.firstName} ${matchedPatient.lastName}` : undefined),
+          admittedDate: adm.admissionDate || 'Today',
+          branch: adm.branch || activeBranch,
         });
       }
     });
@@ -287,7 +308,7 @@ export const WardTransferPage: React.FC = () => {
         <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
           <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Assigned Occupied Beds</p>
           <div className="flex items-baseline justify-between mt-1">
-            <span className="text-2xl font-black text-slate-900">{totalBedsCount}</span>
+            <span className="text-2xl font-black text-slate-900">{occupiedCount}</span>
             <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
               DB Synced
             </span>

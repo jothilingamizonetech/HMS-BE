@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_, func
+from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy import select, or_, and_, func
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 import random, string
 
@@ -101,99 +102,6 @@ def list_medicines(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    from app.models.stock_movement import StockOutward
-
-    # Auto-sync Store Manager pharmaceutical items to Medicine table if missing
-    store_items = db.scalars(select(ItemMaster)).all()
-    for item in store_items:
-        cat_str = str(item.category.value if hasattr(item.category, "value") else item.category)
-        if cat_str.lower() in ("pharmaceuticals", "medicine", "medicines") or "pharm" in cat_str.lower():
-            existing = db.scalar(
-                select(Medicine).where(
-                    or_(
-                        Medicine.code == item.item_code,
-                        func.lower(Medicine.name) == item.item_name.lower(),
-                    )
-                )
-            )
-            if not existing:
-                unit_str = str(item.unit.value if hasattr(item.unit, "value") else item.unit)
-                new_med = Medicine(
-                    code=item.item_code,
-                    name=item.item_name,
-                    generic_name=item.item_name,
-                    brand=item.brand or "Standard",
-                    category="Pharmaceuticals",
-                    manufacturer="Store Vendor",
-                    dosage_form="Tablet/Capsule",
-                    strength="Standard",
-                    unit=unit_str or "Piece",
-                    purchase_price=item.unit_price or 0.0,
-                    selling_price=round((item.unit_price or 0.0) * 1.15, 2),
-                    storage_condition="Room Temp",
-                    rack_location=item.storage_location or "Main Store Rack",
-                    status="Active",
-                    current_stock=0,
-                    min_stock=item.min_stock or 0,
-                    max_stock=item.max_stock or 0,
-                    reorder_level=item.reorder_level or 0,
-                    branch=item.branch,
-                )
-                db.add(new_med)
-                db.commit()
-
-    # Sync medicine stock with total stock outward transfers from Store to Pharmacy
-    all_meds = db.scalars(select(Medicine)).all()
-    for med in all_meds:
-        outward_qty = db.scalar(
-            select(func.sum(StockOutward.quantity)).where(
-                or_(
-                    StockOutward.item_code == med.code,
-                    func.lower(StockOutward.item_name) == med.name.lower(),
-                )
-            )
-        ) or 0
-
-        if outward_qty > med.current_stock:
-            med.current_stock = outward_qty
-            db.commit()
-
-        # Guarantee that a PharmacyBatch exists with available_quantity >= med.current_stock
-        if med.current_stock > 0:
-            try:
-                existing_batch = db.scalar(
-                    select(PharmacyBatch).where(
-                        or_(
-                            PharmacyBatch.medicine_id == med.id,
-                            func.lower(PharmacyBatch.medicine_name) == med.name.lower(),
-                        )
-                    )
-                )
-                if not existing_batch:
-                    b = PharmacyBatch(
-                        batch_number=f"STORE-BATCH-{med.id[:8]}",
-                        medicine_id=med.id,
-                        medicine_name=med.name,
-                        supplier_name="Central Store Transfer",
-                        manufacturing_date="2026-01-01",
-                        expiry_date="2027-12-31",
-                        purchase_price=med.purchase_price,
-                        selling_price=med.selling_price,
-                        quantity_received=med.current_stock,
-                        available_quantity=med.current_stock,
-                        batch_status="Available",
-                        branch=med.branch,
-                    )
-                    db.add(b)
-                    db.commit()
-                elif existing_batch.available_quantity < med.current_stock:
-                    existing_batch.available_quantity = med.current_stock
-                    existing_batch.quantity_received = max(existing_batch.quantity_received, med.current_stock)
-                    existing_batch.batch_status = "Available"
-                    db.commit()
-            except Exception:
-                db.rollback()
-
     stmt = select(Medicine).order_by(Medicine.name)
     stmt = _branch_filter(stmt, Medicine, current_user, branch)
     return [_row(r) for r in db.scalars(stmt).all()]
@@ -331,9 +239,37 @@ def list_prescriptions(
 
 @router.post("/prescriptions", status_code=201)
 def create_prescription(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user), _perm=_perm_create):
-    rxnum = f"RX-{datetime.now().year}-{''.join(random.choices(string.digits, k=3))}"
+    pnum = payload.get("prescriptionNumber")
+    uhid = payload.get("patientUhid")
+    pname = payload.get("patientName")
+
+    existing = None
+    if pnum:
+        existing = db.scalar(select(Prescription).where(func.lower(Prescription.prescription_number) == pnum.strip().lower()))
+    if not existing and uhid:
+        existing = db.scalar(select(Prescription).where(and_(func.lower(Prescription.patient_uhid) == uhid.strip().lower(), Prescription.status.in_(["Pending", "Verified"]))))
+    if not existing and pname:
+        existing = db.scalar(select(Prescription).where(and_(func.lower(Prescription.patient_name) == pname.strip().lower(), Prescription.status.in_(["Pending", "Verified"]))))
+
+    if existing:
+        existing.items = payload.get("items", existing.items)
+        flag_modified(existing, "items")
+        if "totalAmount" in payload:
+            existing.total_amount = payload["totalAmount"]
+        if "dueAmount" in payload:
+            existing.due_amount = payload["dueAmount"]
+        if "doctorName" in payload and payload["doctorName"]:
+            existing.doctor_name = payload["doctorName"]
+        if "department" in payload and payload["department"]:
+            existing.department = payload["department"]
+
+        db.commit()
+        db.refresh(existing)
+        return _row(existing)
+
+    rxnum = pnum or f"RX-{datetime.now().year}-{''.join(random.choices(string.digits, k=3))}"
     row = Prescription(
-        prescription_number=payload.get("prescriptionNumber", rxnum),
+        prescription_number=rxnum,
         patient_uhid=payload.get("patientUhid", ""), patient_name=payload.get("patientName", ""),
         patient_age=payload.get("patientAge", 0), patient_gender=payload.get("patientGender", ""),
         doctor_name=payload.get("doctorName", ""), department=payload.get("department", ""),
@@ -760,7 +696,7 @@ def get_pharmacy_reports(
             "purchaseCount": len(m_purchases),
         })
 
-    med_sales_map = {}
+    med_sales_map: dict[str, dict[str, Any]] = {}
     for inv in invoices:
         items = inv.items if isinstance(inv.items, list) else []
         for item in items:
@@ -778,7 +714,7 @@ def get_pharmacy_reports(
         if name.lower() in med_cat_lookup:
             data["category"] = med_cat_lookup[name.lower()]
 
-    supplier_map = {}
+    supplier_map: dict[str, dict[str, Any]] = {}
     for pur in purchases:
         sup_name = pur.supplier_name or "Vendor"
         amt = float(pur.total_amount or 0)
@@ -808,9 +744,9 @@ def get_pharmacy_reports(
                 expiring_30_days += 1
                 expiring_value += (b_qty * b_price)
 
-    total_gross_sales = sum(m["sales"] for m in monthly_data)
-    total_purchase_cost = sum(m["purchase"] for m in monthly_data)
-    total_profit = sum(m["profit"] for m in monthly_data)
+    total_gross_sales = sum(float(m["sales"]) for m in monthly_data)
+    total_purchase_cost = sum(float(m["purchase"]) for m in monthly_data)
+    total_profit = sum(float(m["profit"]) for m in monthly_data)
 
     return {
         "monthlyTrend": monthly_data,

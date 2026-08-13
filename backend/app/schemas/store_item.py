@@ -60,6 +60,9 @@ class ItemMasterBase(BaseModel):
     item_name: str = Field(..., alias="itemName")
     category: ItemCategory
     sub_category: str | None = Field(None, alias="subCategory")
+    generic_composition: str | None = Field(None, alias="genericComposition")
+    strength: str | None = None
+    dosage_form: str | None = Field(None, alias="dosageForm")
     unit: ItemUnit
     pack_quantity: int = Field(1, alias="packQuantity")
     issue_unit: str | None = Field("Piece", alias="issueUnit")
@@ -97,6 +100,9 @@ class ItemMasterUpdate(BaseModel):
     item_name: str | None = Field(None, alias="itemName")
     category: ItemCategory | None = None
     sub_category: str | None = Field(None, alias="subCategory")
+    generic_composition: str | None = Field(None, alias="genericComposition")
+    strength: str | None = None
+    dosage_form: str | None = Field(None, alias="dosageForm")
     unit: ItemUnit | None = None
     pack_quantity: int | None = Field(None, alias="packQuantity")
     issue_unit: str | None = Field(None, alias="issueUnit")

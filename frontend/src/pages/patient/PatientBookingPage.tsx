@@ -448,7 +448,24 @@ export const PatientBookingPage: React.FC = () => {
     let targetUhid = existingUhid;
     let targetName = fullName;
 
-    if (patientType === 'New Patient' || !targetUhid) {
+    // Check if patient already exists by Mobile, UHID, or Full Name
+    const mobDigits = (mobile || '').replace(/\D/g, '').slice(-10);
+    const cleanName = (fullName || '').trim().toLowerCase();
+
+    const existingPatient = patients.find((p) => {
+      const pMob = (p.mobile || '').replace(/\D/g, '').slice(-10);
+      const pName = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase();
+      if (existingUhid && p.uhid === existingUhid) return true;
+      if (mobDigits && pMob && mobDigits === pMob) return true;
+      if (cleanName && pName && cleanName === pName) return true;
+      return false;
+    });
+
+    if (existingPatient) {
+      targetUhid = existingPatient.uhid;
+      targetName = `${existingPatient.firstName} ${existingPatient.lastName}`.trim();
+      setExistingUhid(existingPatient.uhid);
+    } else if (patientType === 'New Patient' || !targetUhid) {
       try {
         const nameParts = (fullName || 'New Patient').trim().split(' ');
         const fName = nameParts[0] || 'Patient';

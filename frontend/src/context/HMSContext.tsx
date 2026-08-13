@@ -222,6 +222,9 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           itemName: i.item_name || i.itemName,
           category: i.category,
           subCategory: i.sub_category || i.subCategory || '',
+          genericComposition: i.generic_composition || i.genericComposition || '',
+          strength: i.strength || '',
+          dosageForm: i.dosage_form || i.dosageForm || 'Tablet',
           unit: i.unit,
           packQuantity: i.pack_quantity ?? i.packQuantity ?? 1,
           issueUnit: i.issue_unit || i.issueUnit || 'Piece',
@@ -437,6 +440,22 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addPatient = async (patientData: Omit<Patient, 'id' | 'uhid' | 'registrationDate' | 'status'>): Promise<Patient> => {
     try {
+      const targetMob = (patientData.mobile || '').replace(/\D/g, '').slice(-10);
+      const targetName = `${patientData.firstName || ''} ${patientData.lastName || ''}`.trim().toLowerCase();
+
+      const existingMatch = patients.find((p) => {
+        const pMob = (p.mobile || '').replace(/\D/g, '').slice(-10);
+        const pName = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase();
+        if (targetMob && pMob && targetMob === pMob) return true;
+        if (targetName && pName && targetName === pName) return true;
+        return false;
+      });
+
+      if (existingMatch) {
+        addToast('info', 'Patient Matched', `Using existing patient record (UHID: ${existingMatch.uhid})`);
+        return existingMatch;
+      }
+
       const created = await createPatientApi(patientData);
       setPatients((prev) => [created, ...prev]);
       addToast('success', 'Patient Registered', `Patient registered with UHID: ${created.uhid}`);
@@ -748,6 +767,13 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedBed = await releaseBedApi(bedId);
       const mapped = mapBedResponse(updatedBed);
       setBeds((prev) => prev.map((b) => (b.id === bedId ? mapped : b)));
+      setIpdAdmissions((prev) =>
+        prev.map((adm) =>
+          adm.bedNumber === mapped.bedNumber || (mapped.currentPatientUhid && adm.patientUhid === mapped.currentPatientUhid)
+            ? { ...adm, status: 'Discharged' }
+            : adm
+        )
+      );
       if (mapped.status === 'Available') {
         addToast('success', 'Bed Available', `Bed ${mapped.bedNumber} is now available.`);
       } else {
@@ -770,7 +796,13 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         itemName: created.item_name || created.itemName,
         category: created.category,
         subCategory: created.sub_category || created.subCategory || '',
+        genericComposition: created.generic_composition || created.genericComposition || itemData.genericComposition || '',
+        strength: created.strength || itemData.strength || '',
+        dosageForm: created.dosage_form || created.dosageForm || itemData.dosageForm || 'Tablet',
         unit: created.unit,
+        packQuantity: created.pack_quantity ?? created.packQuantity ?? itemData.packQuantity ?? 1,
+        issueUnit: created.issue_unit || created.issueUnit || itemData.issueUnit || 'Piece',
+        openingStock: created.opening_stock ?? created.openingStock ?? itemData.openingStock ?? 0,
         brand: created.brand || '',
         hsnCode: created.hsn_code || created.hsnCode || '',
         gstPercentage: created.gst_percentage ?? created.gstPercentage ?? 0,
@@ -802,7 +834,13 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         itemName: updated.item_name || updated.itemName || itemData.itemName,
         category: updated.category || itemData.category,
         subCategory: updated.sub_category || updated.subCategory || itemData.subCategory || '',
+        genericComposition: updated.generic_composition ?? updated.genericComposition ?? itemData.genericComposition ?? '',
+        strength: updated.strength ?? itemData.strength ?? '',
+        dosageForm: updated.dosage_form ?? updated.dosageForm ?? itemData.dosageForm ?? 'Tablet',
         unit: updated.unit || itemData.unit,
+        packQuantity: updated.pack_quantity ?? updated.packQuantity ?? itemData.packQuantity ?? 1,
+        issueUnit: updated.issue_unit || updated.issueUnit || itemData.issueUnit || 'Piece',
+        openingStock: updated.opening_stock ?? updated.openingStock ?? itemData.openingStock ?? 0,
         brand: updated.brand || itemData.brand || '',
         hsnCode: updated.hsn_code || updated.hsnCode || itemData.hsnCode || '',
         gstPercentage: updated.gst_percentage ?? updated.gstPercentage ?? itemData.gstPercentage ?? 0,

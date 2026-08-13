@@ -128,7 +128,7 @@ export const ItemMasterPage: React.FC = () => {
     }
 
     const openingStock = Number(formData.openingStock) >= 0 ? Number(formData.openingStock) : 0;
-    const currentStock = openingStock;
+    const currentStock = selectedItem ? (formData.currentStock ?? selectedItem.currentStock ?? openingStock) : openingStock;
 
     const sanitizedData: Omit<ItemMaster, 'id'> = {
       ...formData,
@@ -503,14 +503,24 @@ export const ItemMasterPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Sub Category</label>
-              <input
-                type="text"
-                value={formData.subCategory}
+              <label className="block text-xs font-bold text-slate-700 mb-1">Sub Category *</label>
+              <select
+                value={formData.subCategory || 'General Pharmaceuticals'}
                 onChange={(e) => setFormData({ ...formData, subCategory: e.target.value })}
-                placeholder="e.g. Anti-diabetic, Analgesics"
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
-              />
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none cursor-pointer"
+              >
+                <option value="General Pharmaceuticals">General Pharmaceuticals</option>
+                <option value="Anti-diabetic & Metabolic">Anti-diabetic & Metabolic</option>
+                <option value="Antibiotics & Anti-infectives">Antibiotics & Anti-infectives</option>
+                <option value="Analgesics & Pain Management">Analgesics & Pain Management</option>
+                <option value="Cardiovascular & Cardiac Care">Cardiovascular & Cardiac Care</option>
+                <option value="Respiratory & Pulmonary">Respiratory & Pulmonary</option>
+                <option value="Gastrointestinal">Gastrointestinal</option>
+                <option value="Surgical Disposables & Kits">Surgical Disposables & Kits</option>
+                <option value="ICU & Critical Care Supplies">ICU & Critical Care Supplies</option>
+                <option value="Diagnostic & Lab Reagents">Diagnostic & Lab Reagents</option>
+                <option value="General Store & Utility">General Store & Utility</option>
+              </select>
             </div>
 
             <div>

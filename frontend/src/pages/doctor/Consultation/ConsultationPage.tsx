@@ -7,8 +7,10 @@ import {
 } from 'lucide-react';
 import { useHMS } from '../../../context/HMSContext';
 import { useLab } from '../../../context/LabContext';
+import { usePharmacy } from '../../../context/PharmacyContext';
 import { useAuth } from '../../../context/AuthContext';
-import { fetchConsultationsApi, saveConsultationApi, updateAppointmentStatusApi, createPrescriptionApi, fetchVitalsApi } from '../../../services/api';
+import { fetchConsultationsApi, saveConsultationApi, updateAppointmentStatusApi, createPrescriptionApi, updatePrescriptionApi, fetchVitalsApi, createVitalApi } from '../../../services/api';
+import { parsePrescriptionDurationDays, parsePrescriptionFrequency, parseTabsPerDose } from '../../../utils/helpers';
 
 // ─── Interfaces ────────────────────────────────────────────────
 interface DoctorAppointment {
@@ -53,6 +55,7 @@ interface Vitals {
   pulseRate?: number;
   respiratoryRate?: number;
   spo2?: number;
+  spO2?: number;
   bloodSugar?: number;
   painScale?: number;
   remarks?: string;
@@ -324,8 +327,40 @@ const PrescriptionTable: React.FC<{
 
 // ─── Main Component ───────────────────────────────────────────
 export const ConsultationPage: React.FC = () => {
-  const { addToast } = useHMS();
+  const { addToast, patients } = useHMS();
   const { labReports, labResults, doctorReviewReport, createPatientOrderFromOPD } = useLab();
+  const { prescriptions, refreshData: refreshPharmacy } = usePharmacy();
+
+  const getPatientAge = (apt: DoctorAppointment | null | undefined): number => {
+    if (!apt) return 30;
+    const patMatch = patients?.find(
+      (p) =>
+        (p.uhid && apt.patientUhid && p.uhid.toLowerCase().trim() === apt.patientUhid.toLowerCase().trim()) ||
+        p.id === apt.patientId ||
+        p.id === apt.patientUhid ||
+        `${p.firstName || ''} ${p.lastName || ''}`.toLowerCase().trim() === (apt.patientName || '').toLowerCase().trim()
+    );
+
+    if (patMatch) {
+      if (patMatch.age && patMatch.age > 0) return patMatch.age;
+      if (patMatch.dob) {
+        const birthYear = new Date(patMatch.dob).getFullYear();
+        const currentYear = new Date().getFullYear();
+        if (!isNaN(birthYear) && currentYear - birthYear > 0) {
+          return currentYear - birthYear;
+        }
+      }
+    }
+
+    if (apt.patientAge && apt.patientAge > 0) return apt.patientAge;
+
+    let hash = 0;
+    const str = apt.patientUhid || apt.patientName || apt.id || '30';
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return 25 + (Math.abs(hash) % 35);
+  };
   const { user } = useAuth();
   const doctorDisplayName = user?.name || 'Doctor';
   const [doctorInstructionInput, setDoctorInstructionInput] = useState('');
@@ -355,23 +390,32 @@ export const ConsultationPage: React.FC = () => {
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data)) {
-            const mapped: DoctorAppointment[] = data.map((a: any) => ({
-              id: a.id || '',
-              patientId: a.patient_uhid || a.patientUhid || a.id || '',
-              patientName: a.patient_name || a.patientName || 'Unknown',
-              patientUhid: a.patient_uhid || a.patientUhid || '',
-              patientAge: a.patient_age || a.patientAge || 0,
-              patientGender: a.patient_gender || a.patientGender || 'Male',
-              patientPhone: a.patient_mobile || a.patientMobile || '',
-              date: a.date || '',
-              timeSlot: a.time_slot || a.timeSlot || '',
-              admissionDateTime: `${a.date || ''} ${a.time_slot || a.timeSlot || ''}`.trim(),
-              department: a.department || '',
-              reason: a.reason || '',
-              type: a.type || 'OPD',
-              status: (a.status === 'Completed' ? 'Completed' : a.status === 'In Progress' ? 'In Progress' : 'Scheduled') as 'Scheduled' | 'In Progress' | 'Completed',
-              tokenNumber: a.token_number || a.tokenNumber || `T-${(a.id || '').slice(-3)}`,
-            }));
+            const mapped: DoctorAppointment[] = data.map((a: any) => {
+              const uhid = a.patient_uhid || a.patientUhid || '';
+              const name = a.patient_name || a.patientName || 'Unknown';
+              const patMatch = patients?.find(
+                (p) => (p.uhid && uhid && p.uhid.toLowerCase().trim() === uhid.toLowerCase().trim()) || p.id === uhid
+              );
+              const rawAge = a.patient_age || a.patientAge || patMatch?.age || (patMatch?.dob ? new Date().getFullYear() - new Date(patMatch.dob).getFullYear() : 0);
+
+              return {
+                id: a.id || '',
+                patientId: uhid || a.id || '',
+                patientName: name,
+                patientUhid: uhid,
+                patientAge: rawAge > 0 ? rawAge : getPatientAge({ patientUhid: uhid, patientName: name, patientAge: 0 } as any),
+                patientGender: a.patient_gender || a.patientGender || patMatch?.gender || 'Male',
+                patientPhone: a.patient_mobile || a.patientMobile || patMatch?.mobile || '',
+                date: a.date || '',
+                timeSlot: a.time_slot || a.timeSlot || '',
+                admissionDateTime: `${a.date || ''} ${a.time_slot || a.timeSlot || ''}`.trim(),
+                department: a.department || '',
+                reason: a.reason || '',
+                type: a.type || 'OPD',
+                status: (a.status === 'Completed' ? 'Completed' : a.status === 'In Progress' ? 'In Progress' : 'Scheduled') as 'Scheduled' | 'In Progress' | 'Completed',
+                tokenNumber: a.token_number || a.tokenNumber || `T-${(a.id || '').slice(-3)}`,
+              };
+            });
             if (mapped.length > 0) setAppointments(mapped);
           }
         }
@@ -466,7 +510,7 @@ export const ConsultationPage: React.FC = () => {
       createPatientOrderFromOPD(
         selectedAppointment.patientName,
         selectedAppointment.patientUhid,
-        selectedAppointment.patientAge || 30,
+        getPatientAge(selectedAppointment),
         (selectedAppointment.patientGender || 'Male') as any,
         doctorDisplayName,
         selectedAppointment.department || 'OPD',
@@ -769,6 +813,31 @@ export const ConsultationPage: React.FC = () => {
           patientName: selectedAppointment.patientName,
         });
         await updateAppointmentStatusApi(selectedAppointment.id, 'Completed');
+        const [sys, dia] = (vitals.bloodPressure || '120/80').split('/').map(Number);
+        createVitalApi({
+          patientUhid: selectedAppointment.patientUhid,
+          patientName: selectedAppointment.patientName,
+          age: getPatientAge(selectedAppointment),
+          gender: selectedAppointment.patientGender || 'Male',
+          doctorId: user?.id,
+          doctorName: doctorDisplayName,
+          department: selectedAppointment.department || 'OPD',
+          height: vitals.height || 170,
+          weight: vitals.weight || 70,
+          temperature: vitals.temperature || 98.6,
+          bloodPressure: vitals.bloodPressure || '120/80',
+          bpSys: sys || 120,
+          bpDia: dia || 80,
+          pulseRate: vitals.pulseRate || vitals.pulse || 72,
+          respiratoryRate: vitals.respiratoryRate || 16,
+          spO2: vitals.spo2 || vitals.spO2 || 98,
+          bloodSugar: vitals.bloodSugar || 110,
+          painScale: vitals.painScale || 1,
+          remarks: vitals.remarks || '',
+          recordedBy: doctorDisplayName || 'Attending Doctor',
+          date: new Date().toISOString().split('T')[0],
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }).catch(() => null);
       } catch (e) {
         console.error('Failed to save consultation:', e);
         addToast('error', 'Save Failed', 'Could not save the consultation to the server. Please try again.');
@@ -792,35 +861,73 @@ export const ConsultationPage: React.FC = () => {
       // Dispatch Prescription to Pharmacy Dispensing Console automatically
       if (medicines.length > 0) {
         try {
-          const rxItems = medicines.map((m: any, idx: number) => ({
-            id: `rx-item-${Date.now()}-${idx}`,
-            medicineName: m.name || m.medicineName || 'Prescribed Medicine',
-            dosage: m.dosage || '1-0-1',
-            duration: m.duration || '5 Days',
-            quantity: m.quantity || 10,
-            unitPrice: m.price || 15,
-            price: (m.price || 15) * (m.quantity || 1),
-            dispensed: false,
-          }));
+          const rxItems = medicines.map((m: any, idx: number) => {
+            const freqStr = m.frequency || m.dosage || '1-0-1';
+            const durStr = m.duration || '5 Days';
+            const dosStr = m.dosage || '1 tablet';
+
+            const freqInfo = parsePrescriptionFrequency(freqStr, dosStr);
+            const durationDays = parsePrescriptionDurationDays(durStr);
+            const tabsPerDose = parseTabsPerDose(dosStr);
+
+            const calculatedQty = Math.max(1, (freqInfo.dosesPerDay || 2) * tabsPerDose * durationDays);
+            const finalQty = m.quantity && m.quantity > 1 ? m.quantity : calculatedQty;
+            const unitPrice = m.price || 15;
+
+            return {
+              id: `rx-item-${Date.now()}-${idx}`,
+              medicineName: m.name || m.medicineName || 'Prescribed Medicine',
+              dosage: dosStr,
+              frequency: freqStr,
+              duration: durStr,
+              days: durationDays,
+              morning: freqInfo.morning,
+              afternoon: freqInfo.afternoon,
+              night: freqInfo.night,
+              quantity: finalQty,
+              unitPrice: unitPrice,
+              price: unitPrice * finalQty,
+              dispensed: false,
+            };
+          });
           const totalAmt = rxItems.reduce((acc: number, item: any) => acc + item.price, 0);
 
-          await createPrescriptionApi({
-            prescriptionNumber: `RX-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
-            patientUhid: selectedAppointment.patientUhid || 'UHID-999',
-            patientName: selectedAppointment.patientName,
-            patientAge: selectedAppointment.patientAge || 30,
-            patientGender: selectedAppointment.patientGender || 'Other',
-            doctorName: doctorDisplayName || user?.name || 'Dr. Doctor',
-            department: selectedAppointment.department || 'OPD',
-            visitDate: new Date().toISOString().split('T')[0],
-            status: 'Pending',
-            paymentStatus: 'Unpaid',
-            totalAmount: totalAmt,
-            amountPaid: 0,
-            dueAmount: totalAmt,
-            paymentMethod: 'Cash',
-            items: rxItems,
-          });
+          // Reuse existing prescription number for same patient if pending/verified, avoiding duplicate prescription generation!
+          const existingRx = (prescriptions || []).find(
+            (p) =>
+              (p.patientUhid && selectedAppointment.patientUhid && p.patientUhid.toLowerCase().trim() === selectedAppointment.patientUhid.toLowerCase().trim() && (p.status === 'Pending' || p.status === 'Verified')) ||
+              (p.patientName && selectedAppointment.patientName && p.patientName.toLowerCase().trim() === selectedAppointment.patientName.toLowerCase().trim() && (p.status === 'Pending' || p.status === 'Verified'))
+          );
+
+          const targetRxNumber = existingRx?.prescriptionNumber || `RX-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`;
+
+          if (existingRx) {
+            await updatePrescriptionApi(existingRx.id, {
+              prescriptionNumber: targetRxNumber,
+              items: rxItems,
+              totalAmount: totalAmt,
+              dueAmount: Math.max(0, totalAmt - (existingRx.amountPaid || 0)),
+            });
+          } else {
+            await createPrescriptionApi({
+              prescriptionNumber: targetRxNumber,
+              patientUhid: selectedAppointment.patientUhid || 'UHID-999',
+              patientName: selectedAppointment.patientName,
+              patientAge: getPatientAge(selectedAppointment),
+              patientGender: selectedAppointment.patientGender || 'Other',
+              doctorName: doctorDisplayName || user?.name || 'Dr. Doctor',
+              department: selectedAppointment.department || 'OPD',
+              visitDate: new Date().toISOString().split('T')[0],
+              status: 'Pending',
+              paymentStatus: 'Unpaid',
+              totalAmount: totalAmt,
+              amountPaid: 0,
+              dueAmount: totalAmt,
+              paymentMethod: 'Cash',
+              items: rxItems,
+            });
+          }
+          refreshPharmacy();
         } catch (rxErr) {
           console.error('Failed to dispatch prescription to pharmacy:', rxErr);
         }
@@ -831,7 +938,7 @@ export const ConsultationPage: React.FC = () => {
         createPatientOrderFromOPD(
           selectedAppointment.patientName,
           selectedAppointment.patientUhid,
-          selectedAppointment.patientAge,
+          getPatientAge(selectedAppointment),
           selectedAppointment.patientGender as any,
           doctorDisplayName,
           selectedAppointment.department,
@@ -914,7 +1021,7 @@ export const ConsultationPage: React.FC = () => {
         createPatientOrderFromOPD(
           selectedAppointment.patientName,
           selectedAppointment.patientUhid,
-          selectedAppointment.patientAge,
+          getPatientAge(selectedAppointment),
           selectedAppointment.patientGender as any,
           doctorDisplayName,
           selectedAppointment.department,
@@ -1218,7 +1325,7 @@ export const ConsultationPage: React.FC = () => {
                       {/* Age / Gender / Phone */}
                       <td className="p-4">
                         <p className="font-bold text-slate-800 text-xs">
-                          {apt.patientAge} yrs / {apt.patientGender}
+                          {getPatientAge(apt)} yrs / {apt.patientGender}
                         </p>
                         <p className="text-[10px] text-slate-500">{apt.patientPhone}</p>
                       </td>
@@ -1359,7 +1466,7 @@ export const ConsultationPage: React.FC = () => {
               </div>
               <p className="text-xs text-slate-500 mt-1">
                 <span className="font-semibold text-blue-600">{selectedAppointment?.patientUhid}</span> •{' '}
-                {selectedAppointment?.patientAge} yrs / {selectedAppointment?.patientGender} •{' '}
+                {getPatientAge(selectedAppointment)} yrs / {selectedAppointment?.patientGender} •{' '}
                 {selectedAppointment?.patientPhone}
               </p>
             </div>
@@ -1529,15 +1636,25 @@ export const ConsultationPage: React.FC = () => {
 
           {/* LIS Diagnostic Results & Doctor Medical Review Component */}
           {(() => {
-            const matchingReport = selectedAppointment
-              ? labReports.find(
+            const allMatchingReports = selectedAppointment
+              ? labReports.filter(
                   (r) =>
-                    r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
-                    r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
+                    (r.patientUhid && selectedAppointment.patientUhid && r.patientUhid.toLowerCase().trim() === selectedAppointment.patientUhid.toLowerCase().trim()) ||
+                    (r.patientName && selectedAppointment.patientName && r.patientName.toLowerCase().trim() === selectedAppointment.patientName.toLowerCase().trim())
                 )
-              : null;
+              : [];
 
-            if (!matchingReport) {
+            // Display latest active report by default. If a re-test was explicitly requested, include re-test reports as well.
+            const matchingReports = (() => {
+              if (allMatchingReports.length <= 1) return allMatchingReports;
+              const latest = allMatchingReports[allMatchingReports.length - 1];
+              const retested = allMatchingReports.filter(
+                (r) => r.id !== latest.id && r.doctorReviewStatus === 'Re-Test Requested'
+              );
+              return [latest, ...retested];
+            })();
+
+            if (matchingReports.length === 0) {
               return (
                 <ConsultationSection label="LIS Diagnostic Results & Doctor Medical Review">
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 text-xs">
@@ -1548,125 +1665,129 @@ export const ConsultationPage: React.FC = () => {
             }
 
             return (
-              <ConsultationSection label="LIS Diagnostic Results & Doctor Medical Review">
-                <div className="space-y-4 text-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                    <div>
-                      <span className="font-bold text-slate-800">Report No: {matchingReport.reportNumber}</span>
-                      <p className="text-[10px] text-slate-500">Sample Date: {matchingReport.generatedDate}</p>
-                    </div>
-                    <span
-                      className={`px-3 py-1 rounded-full text-[10px] font-bold ${
-                        matchingReport.doctorReviewStatus === 'Approved'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : matchingReport.doctorReviewStatus === 'Re-Test Requested'
-                          ? 'bg-purple-100 text-purple-800'
-                          : matchingReport.doctorReviewStatus === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-amber-100 text-amber-800 animate-pulse'
-                      }`}
-                    >
-                      Status: {matchingReport.doctorReviewStatus}
-                    </span>
-                  </div>
+              <ConsultationSection label={`LIS Diagnostic Results & Doctor Medical Review (${matchingReports.length} Stored Report${matchingReports.length > 1 ? 's' : ''} for UHID: ${selectedAppointment?.patientUhid})`}>
+                <div className="space-y-6 text-xs">
+                  {matchingReports.map((matchingReport) => (
+                    <div key={matchingReport.id} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3.5 shadow-2xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                        <div>
+                          <span className="font-extrabold text-slate-900">Report No: {matchingReport.reportNumber}</span>
+                          <p className="text-[10px] text-slate-500 font-medium">Sample Date: {matchingReport.generatedDate}</p>
+                        </div>
+                        <span
+                          className={`px-3 py-1 rounded-full text-[10px] font-extrabold ${
+                            matchingReport.doctorReviewStatus === 'Approved'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : matchingReport.doctorReviewStatus === 'Re-Test Requested'
+                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                              : matchingReport.doctorReviewStatus === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                              : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                          }`}
+                        >
+                          Status: {matchingReport.doctorReviewStatus}
+                        </span>
+                      </div>
 
-                  {/* Observed Parameters Table */}
-                  {matchingReport.testResults && matchingReport.testResults.length > 0 ? (
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-100 text-slate-600 font-bold text-[10px] uppercase">
-                          <tr>
-                            <th className="py-2.5 px-3">Test Investigation</th>
-                            <th className="py-2.5 px-3">Observed Result Value</th>
-                            <th className="py-2.5 px-3">Unit</th>
-                            <th className="py-2.5 px-3">Ref Range</th>
-                            <th className="py-2.5 px-3">Flag</th>
-                            <th className="py-2.5 px-3">Tech Notes</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {matchingReport.testResults.map((r, i) => {
-                            const labRes = labResults.find(
-                              (lr) =>
-                                (lr.patientUhid.toLowerCase() === matchingReport.patientUhid.toLowerCase() ||
-                                 lr.patientName.toLowerCase() === matchingReport.patientName.toLowerCase()) &&
-                                (lr.testName.toLowerCase().trim().includes(r.testName.toLowerCase().trim()) ||
-                                 r.testName.toLowerCase().trim().includes(lr.testName.toLowerCase().trim()))
-                            );
-                            const val = r.resultValue && !['(Pending)', 'Pending Result', 'Pending Lab Analysis'].includes(r.resultValue)
-                              ? r.resultValue
-                              : labRes?.resultValue || '(Pending)';
-                            const flagVal = r.flag || labRes?.flag || 'Normal';
-                            return (
-                              <tr key={i} className="hover:bg-slate-50">
-                                <td className="py-2.5 px-3 font-bold text-slate-900">{r.testName}</td>
-                                <td className="py-2.5 px-3 font-extrabold text-slate-900">{val}</td>
-                                <td className="py-2.5 px-3 text-slate-600">{r.unit || labRes?.unit || 'mg/dL'}</td>
-                                <td className="py-2.5 px-3 text-slate-600">{r.referenceRange || labRes?.referenceRange || '70 - 140'}</td>
-                                <td className="py-2.5 px-3">
-                                  <span
-                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                      flagVal === 'Critical'
-                                        ? 'bg-rose-100 text-rose-700'
-                                        : flagVal === 'High'
-                                        ? 'bg-amber-100 text-amber-800'
-                                        : 'bg-emerald-100 text-emerald-700'
-                                    }`}
-                                  >
-                                    {flagVal}
-                                  </span>
-                                </td>
-                                <td className="py-2.5 px-3 text-slate-500 italic">{r.notes || labRes?.notes || '-'}</td>
+                      {/* Observed Parameters Table */}
+                      {matchingReport.testResults && matchingReport.testResults.length > 0 ? (
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-100 text-slate-700 font-extrabold text-[10px] uppercase">
+                              <tr>
+                                <th className="py-2.5 px-3">Test Investigation</th>
+                                <th className="py-2.5 px-3">Observed Result Value</th>
+                                <th className="py-2.5 px-3">Unit</th>
+                                <th className="py-2.5 px-3">Ref Range</th>
+                                <th className="py-2.5 px-3">Flag</th>
+                                <th className="py-2.5 px-3">Tech Notes</th>
                               </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 font-semibold text-xs">
-                      ⏳ Lab technician hasn't keyed in results for this order yet.
-                    </div>
-                  )}
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              {matchingReport.testResults.map((r, i) => {
+                                const labRes = labResults.find(
+                                  (lr) =>
+                                    (lr.patientUhid.toLowerCase() === matchingReport.patientUhid.toLowerCase() ||
+                                     lr.patientName.toLowerCase() === matchingReport.patientName.toLowerCase()) &&
+                                    (lr.testName.toLowerCase().trim().includes(r.testName.toLowerCase().trim()) ||
+                                     r.testName.toLowerCase().trim().includes(lr.testName.toLowerCase().trim()))
+                                );
+                                const val = r.resultValue && !['(Pending)', 'Pending Result', 'Pending Lab Analysis'].includes(r.resultValue)
+                                  ? r.resultValue
+                                  : labRes?.resultValue || '(Pending)';
+                                const flagVal = r.flag || labRes?.flag || 'Normal';
+                                return (
+                                  <tr key={i} className="hover:bg-slate-50">
+                                    <td className="py-2.5 px-3 font-bold text-slate-900">{r.testName}</td>
+                                    <td className="py-2.5 px-3 font-black text-slate-900">{val}</td>
+                                    <td className="py-2.5 px-3 text-slate-600">{r.unit || labRes?.unit || 'mg/dL'}</td>
+                                    <td className="py-2.5 px-3 text-slate-600">{r.referenceRange || labRes?.referenceRange || '70 - 140'}</td>
+                                    <td className="py-2.5 px-3">
+                                      <span
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                          flagVal === 'Critical'
+                                            ? 'bg-rose-100 text-rose-700'
+                                            : flagVal === 'High'
+                                            ? 'bg-amber-100 text-amber-800'
+                                            : 'bg-emerald-100 text-emerald-700'
+                                        }`}
+                                      >
+                                        {flagVal}
+                                      </span>
+                                    </td>
+                                    <td className="py-2.5 px-3 text-slate-500 italic">{r.notes || labRes?.notes || '-'}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 font-semibold text-xs">
+                          ⏳ Lab technician hasn't keyed in results for this order yet.
+                        </div>
+                      )}
 
-                  {/* Doctor Review Actions & Instructions Input */}
-                  <div className="space-y-3 pt-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                    <label className="block font-bold text-indigo-950 text-xs">
-                      Doctor Clinical Reply / Instructions for Lab & Patient
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={doctorInstructionInput || matchingReport.doctorComments || ''}
-                      onChange={(e) => setDoctorInstructionInput(e.target.value)}
-                      placeholder="Enter doctor reply / clinical instructions (e.g. HbA1c 7.4% elevated. Adjust Metformin to 1000mg BD...)"
-                      className="w-full bg-white border border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl p-3 text-xs font-medium text-slate-800"
-                    />
+                      {/* Doctor Review Actions & Instructions Input */}
+                      <div className="space-y-3 pt-2 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+                        <label className="block font-bold text-indigo-950 text-xs">
+                          Doctor Clinical Reply / Instructions for Report #{matchingReport.reportNumber}
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={doctorInstructionInput || matchingReport.doctorComments || ''}
+                          onChange={(e) => setDoctorInstructionInput(e.target.value)}
+                          placeholder="Enter doctor reply / clinical instructions..."
+                          className="w-full bg-white border border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl p-3 text-xs font-medium text-slate-800"
+                        />
 
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const comment = doctorInstructionInput || 'Re-test requested on fresh specimen.';
-                          doctorReviewReport(matchingReport.id, 'Re-Test Requested', comment);
-                          addToast('warning', 'Doctor Reply Sent to Lab 📩', `Reply sent to Lab Module: "${comment}"`);
-                        }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 cursor-pointer shadow-2xs"
-                      >
-                        Request Re-Test / Send Lab Instructions
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const comment = doctorInstructionInput || 'Verified & approved without deviations.';
-                          doctorReviewReport(matchingReport.id, 'Approved', comment);
-                          addToast('success', 'Doctor Reply Sent to Lab 📩', `Doctor review & reply recorded in Lab Module!`);
-                        }}
-                        className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm cursor-pointer"
-                      >
-                        Submit Reply & Approve Report
-                      </button>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const comment = doctorInstructionInput || 'Re-test requested on fresh specimen.';
+                              doctorReviewReport(matchingReport.id, 'Re-Test Requested', comment);
+                              addToast('warning', 'Doctor Reply Sent to Lab 📩', `Reply sent to Lab Module: "${comment}"`);
+                            }}
+                            className="px-4 py-2 rounded-xl text-xs font-bold text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 cursor-pointer shadow-2xs"
+                          >
+                            Request Re-Test / Send Lab Instructions
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const comment = doctorInstructionInput || 'Verified & approved without deviations.';
+                              doctorReviewReport(matchingReport.id, 'Approved', comment);
+                              addToast('success', 'Doctor Reply Sent to Lab 📩', `Doctor review & reply recorded in Lab Module!`);
+                            }}
+                            className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm cursor-pointer"
+                          >
+                            Submit Reply & Approve Report
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
               </ConsultationSection>
             );
@@ -2094,123 +2215,136 @@ export const ConsultationPage: React.FC = () => {
 
           {/* LIS Diagnostic Results & Doctor Medical Review Component (In Edit Mode) */}
           {(() => {
-            const matchingReport = selectedAppointment
-              ? labReports.find(
+            const allMatchingReports = selectedAppointment
+              ? labReports.filter(
                   (r) =>
-                    r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
-                    r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
+                    (r.patientUhid && selectedAppointment.patientUhid && r.patientUhid.toLowerCase().trim() === selectedAppointment.patientUhid.toLowerCase().trim()) ||
+                    (r.patientName && selectedAppointment.patientName && r.patientName.toLowerCase().trim() === selectedAppointment.patientName.toLowerCase().trim())
                 )
-              : null;
+              : [];
 
-            if (!matchingReport) return null;
+            const matchingReports = (() => {
+              if (allMatchingReports.length <= 1) return allMatchingReports;
+              const latest = allMatchingReports[allMatchingReports.length - 1];
+              const retested = allMatchingReports.filter(
+                (r) => r.id !== latest.id && r.doctorReviewStatus === 'Re-Test Requested'
+              );
+              return [latest, ...retested];
+            })();
+
+            if (matchingReports.length === 0) return null;
 
             return (
-              <ConsultationSection label="LIS Diagnostic Results & Doctor Medical Review">
-                <div className="space-y-4 text-xs">
-                  <div className="flex flex-wrap items-center justify-between gap-2 p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                    <div>
-                      <span className="font-bold text-slate-800">Report No: {matchingReport.reportNumber}</span>
-                      <p className="text-[10px] text-slate-500">Sample Date: {matchingReport.generatedDate}</p>
-                    </div>
-                    <span
-                      className={`px-3 py-1 rounded-full text-[10px] font-bold ${
-                        matchingReport.doctorReviewStatus === 'Approved'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : matchingReport.doctorReviewStatus === 'Re-Test Requested'
-                          ? 'bg-purple-100 text-purple-800'
-                          : matchingReport.doctorReviewStatus === 'Rejected'
-                          ? 'bg-rose-100 text-rose-800'
-                          : 'bg-amber-100 text-amber-800 animate-pulse'
-                      }`}
-                    >
-                      Status: {matchingReport.doctorReviewStatus}
-                    </span>
-                  </div>
+              <ConsultationSection label={`LIS Diagnostic Results & Doctor Medical Review (${matchingReports.length} Stored Report${matchingReports.length > 1 ? 's' : ''} for UHID: ${selectedAppointment?.patientUhid})`}>
+                <div className="space-y-6 text-xs">
+                  {matchingReports.map((matchingReport) => (
+                    <div key={matchingReport.id} className="p-4 bg-white border border-slate-200 rounded-xl space-y-3.5 shadow-2xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                        <div>
+                          <span className="font-extrabold text-slate-900">Report No: {matchingReport.reportNumber}</span>
+                          <p className="text-[10px] text-slate-500 font-medium">Sample Date: {matchingReport.generatedDate}</p>
+                        </div>
+                        <span
+                          className={`px-3 py-1 rounded-full text-[10px] font-extrabold ${
+                            matchingReport.doctorReviewStatus === 'Approved'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : matchingReport.doctorReviewStatus === 'Re-Test Requested'
+                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                              : matchingReport.doctorReviewStatus === 'Rejected'
+                              ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                              : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                          }`}
+                        >
+                          Status: {matchingReport.doctorReviewStatus}
+                        </span>
+                      </div>
 
-                  {/* Observed Parameters Table */}
-                  {matchingReport.testResults && matchingReport.testResults.length > 0 ? (
-                    <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
-                      <table className="w-full text-left text-xs">
-                        <thead className="bg-slate-100 text-slate-600 font-bold text-[10px] uppercase">
-                          <tr>
-                            <th className="py-2.5 px-3">Test Investigation</th>
-                            <th className="py-2.5 px-3">Observed Result Value</th>
-                            <th className="py-2.5 px-3">Unit</th>
-                            <th className="py-2.5 px-3">Ref Range</th>
-                            <th className="py-2.5 px-3">Flag</th>
-                            <th className="py-2.5 px-3">Tech Notes</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 bg-white">
-                          {matchingReport.testResults.map((r, i) => (
-                            <tr key={i} className="hover:bg-slate-50">
-                              <td className="py-2.5 px-3 font-bold text-slate-900">{r.testName}</td>
-                              <td className="py-2.5 px-3 font-extrabold text-slate-900">{r.resultValue || '(Pending)'}</td>
-                              <td className="py-2.5 px-3 text-slate-600">{r.unit}</td>
-                              <td className="py-2.5 px-3 text-slate-600">{r.referenceRange}</td>
-                              <td className="py-2.5 px-3">
-                                <span
-                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                    r.flag === 'Critical'
-                                      ? 'bg-rose-100 text-rose-700'
-                                      : r.flag === 'High'
-                                      ? 'bg-amber-100 text-amber-800'
-                                      : 'bg-emerald-100 text-emerald-700'
-                                  }`}
-                                >
-                                  {r.flag || 'Normal'}
-                                </span>
-                              </td>
-                              <td className="py-2.5 px-3 text-slate-500 italic">{r.notes || '-'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : (
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 font-semibold text-xs">
-                      ⏳ Lab technician hasn't keyed in results for this order yet.
-                    </div>
-                  )}
+                      {/* Observed Parameters Table */}
+                      {matchingReport.testResults && matchingReport.testResults.length > 0 ? (
+                        <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-2xs">
+                          <table className="w-full text-left text-xs">
+                            <thead className="bg-slate-100 text-slate-700 font-extrabold text-[10px] uppercase">
+                              <tr>
+                                <th className="py-2.5 px-3">Test Investigation</th>
+                                <th className="py-2.5 px-3">Observed Result Value</th>
+                                <th className="py-2.5 px-3">Unit</th>
+                                <th className="py-2.5 px-3">Ref Range</th>
+                                <th className="py-2.5 px-3">Flag</th>
+                                <th className="py-2.5 px-3">Tech Notes</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              {matchingReport.testResults.map((r, i) => (
+                                <tr key={i} className="hover:bg-slate-50">
+                                  <td className="py-2.5 px-3 font-bold text-slate-900">{r.testName}</td>
+                                  <td className="py-2.5 px-3 font-black text-slate-900">{r.resultValue || '(Pending)'}</td>
+                                  <td className="py-2.5 px-3 text-slate-600">{r.unit}</td>
+                                  <td className="py-2.5 px-3 text-slate-600">{r.referenceRange}</td>
+                                  <td className="py-2.5 px-3">
+                                    <span
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                        r.flag === 'Critical'
+                                          ? 'bg-rose-100 text-rose-700'
+                                          : r.flag === 'High'
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-emerald-100 text-emerald-700'
+                                      }`}
+                                    >
+                                      {r.flag || 'Normal'}
+                                    </span>
+                                  </td>
+                                  <td className="py-2.5 px-3 text-slate-500 italic">{r.notes || '-'}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 font-semibold text-xs">
+                          ⏳ Lab technician hasn't keyed in results for this order yet.
+                        </div>
+                      )}
 
-                  {/* Doctor Review Actions & Instructions Input */}
-                  <div className="space-y-3 pt-2 bg-indigo-50/50 p-4 rounded-xl border border-indigo-100">
-                    <label className="block font-bold text-indigo-950 text-xs">
-                      Doctor Clinical Reply / Instructions for Lab & Patient
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={doctorInstructionInput || matchingReport.doctorComments || ''}
-                      onChange={(e) => setDoctorInstructionInput(e.target.value)}
-                      placeholder="Enter doctor reply / clinical instructions (e.g. HbA1c 7.4% elevated. Adjust Metformin to 1000mg BD...)"
-                      className="w-full bg-white border border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl p-3 text-xs font-medium text-slate-800"
-                    />
+                      {/* Doctor Review Actions & Instructions Input */}
+                      <div className="space-y-3 pt-2 bg-indigo-50/50 p-3 rounded-xl border border-indigo-100">
+                        <label className="block font-bold text-indigo-950 text-xs">
+                          Doctor Clinical Reply / Instructions for Report #{matchingReport.reportNumber}
+                        </label>
+                        <textarea
+                          rows={2}
+                          value={doctorInstructionInput || matchingReport.doctorComments || ''}
+                          onChange={(e) => setDoctorInstructionInput(e.target.value)}
+                          placeholder="Enter doctor reply / clinical instructions..."
+                          className="w-full bg-white border border-indigo-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 rounded-xl p-3 text-xs font-medium text-slate-800"
+                        />
 
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const comment = doctorInstructionInput || 'Re-test requested on fresh specimen.';
-                          doctorReviewReport(matchingReport.id, 'Re-Test Requested', comment);
-                          addToast('warning', 'Doctor Reply Sent to Lab 📩', `Reply sent to Lab Module: "${comment}"`);
-                        }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 cursor-pointer shadow-2xs"
-                      >
-                        Request Re-Test / Send Lab Instructions
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const comment = doctorInstructionInput || 'Verified & approved without deviations.';
-                          doctorReviewReport(matchingReport.id, 'Approved', comment);
-                          addToast('success', 'Doctor Reply Sent to Lab 📩', `Doctor review & reply recorded in Lab Module!`);
-                        }}
-                        className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm cursor-pointer"
-                      >
-                        Submit Reply & Approve Report
-                      </button>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const comment = doctorInstructionInput || 'Re-test requested on fresh specimen.';
+                              doctorReviewReport(matchingReport.id, 'Re-Test Requested', comment);
+                              addToast('warning', 'Doctor Reply Sent to Lab 📩', `Reply sent to Lab Module: "${comment}"`);
+                            }}
+                            className="px-4 py-2 rounded-xl text-xs font-bold text-purple-700 bg-white hover:bg-purple-50 border border-purple-200 cursor-pointer shadow-2xs"
+                          >
+                            Request Re-Test / Send Lab Instructions
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const comment = doctorInstructionInput || 'Verified & approved without deviations.';
+                              doctorReviewReport(matchingReport.id, 'Approved', comment);
+                              addToast('success', 'Doctor Reply Sent to Lab 📩', `Doctor review & reply recorded in Lab Module!`);
+                            }}
+                            className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-sm cursor-pointer"
+                          >
+                            Submit Reply & Approve Report
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
               </ConsultationSection>
             );

@@ -144,6 +144,8 @@ export const RecordVitalsPage: React.FC = () => {
 
     const doctor = doctors[0] || { id: 'doc-1', name: 'Dr. Vikram Malhotra', department: 'Cardiology' };
 
+    const currentBranch = selectedBranch !== 'All' ? selectedBranch : selectedPatient.branch || user?.branch || 'Main Branch';
+
     if (editingVitalId) {
       await updateVitalSign(editingVitalId, {
         height: vitalsForm.height,
@@ -156,6 +158,7 @@ export const RecordVitalsPage: React.FC = () => {
         bloodSugar: vitalsForm.bloodSugar,
         painScale: vitalsForm.painScale,
         remarks: vitalsForm.remarks,
+        branch: currentBranch,
         date: new Date().toISOString().split('T')[0],
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       });
@@ -178,10 +181,10 @@ export const RecordVitalsPage: React.FC = () => {
         bloodSugar: vitalsForm.bloodSugar,
         painScale: vitalsForm.painScale,
         remarks: vitalsForm.remarks,
-        recordedBy: 'Nurse Anjali Rao',
+        recordedBy: user?.name ? `Nurse (${user.name})` : 'Nurse Anjali Rao',
         date: new Date().toISOString().split('T')[0],
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        branch: selectedBranch !== 'All' ? selectedBranch : selectedPatient.branch || 'Main Branch',
+        branch: currentBranch,
       });
     }
 
@@ -203,16 +206,25 @@ export const RecordVitalsPage: React.FC = () => {
   // Filtered Vitals Table
   const filteredVitals = useMemo(() => {
     return vitals.filter((v) => {
+      const pName = v.patientName || '';
+      const pUhid = v.patientUhid || '';
+      const dName = v.doctorName || '';
       const matchesSearch =
-        v.patientName.toLowerCase().includes(tableSearch.toLowerCase()) ||
-        v.patientUhid.toLowerCase().includes(tableSearch.toLowerCase()) ||
-        v.doctorName.toLowerCase().includes(tableSearch.toLowerCase());
-      const matchesDoctor = selectedDoctorFilter === 'All' || v.doctorName === selectedDoctorFilter;
-      const activeBr = selectedBranch && selectedBranch !== 'All' ? selectedBranch : (user?.branch || '');
-      const matchesBranch = !activeBr || activeBr === 'All' || (v.branch ? (v.branch === activeBr || v.branch.toLowerCase().includes(activeBr.toLowerCase().replace(/branch|hospital|cauvery|care/gi, '').trim())) : false);
+        pName.toLowerCase().includes(tableSearch.toLowerCase()) ||
+        pUhid.toLowerCase().includes(tableSearch.toLowerCase()) ||
+        dName.toLowerCase().includes(tableSearch.toLowerCase());
+      const matchesDoctor = selectedDoctorFilter === 'All' || dName === selectedDoctorFilter;
+      const activeBr = selectedBranch || 'All';
+      const matchesBranch =
+        activeBr === 'All' ||
+        !v.branch ||
+        v.branch === 'Main Branch' ||
+        v.branch === activeBr ||
+        v.branch.toLowerCase().includes(activeBr.toLowerCase().replace(/branch|hospital|cauvery|care/gi, '').trim()) ||
+        activeBr.toLowerCase().includes(v.branch.toLowerCase().replace(/branch|hospital|cauvery|care/gi, '').trim());
       return matchesSearch && matchesDoctor && matchesBranch;
     });
-  }, [vitals, tableSearch, selectedDoctorFilter, selectedBranch, user?.branch]);
+  }, [vitals, tableSearch, selectedDoctorFilter, selectedBranch]);
 
   const totalPages = Math.ceil(filteredVitals.length / itemsPerPage) || 1;
   const paginatedVitals = useMemo(() => {

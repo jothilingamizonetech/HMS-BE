@@ -63,80 +63,28 @@ def create_grn(payload: GoodsReceiptCreate, db: Session = Depends(get_db), _=Dep
     grn = GoodsReceipt(**data, items=grn_items)
     db.add(grn)
 
-    # Increment stock for accepted quantities against the item master and sync to Pharmacy
+    # Increment stock for accepted quantities against the item master
     for line in payload.items:
-        item = db.get(ItemMaster, line.item_id) if line.item_id else None
+        item = None
+        if line.item_id:
+            try:
+                item = db.scalar(select(ItemMaster).where(ItemMaster.id == line.item_id))
+            except Exception:
+                pass
+        if not item and line.item_code:
+            item = db.scalar(select(ItemMaster).where(func.lower(ItemMaster.item_code) == line.item_code.lower()))
+        if not item and line.item_name:
+            item = db.scalar(select(ItemMaster).where(func.lower(ItemMaster.item_name) == line.item_name.lower()))
+
         if item and line.accepted_quantity > 0:
             item.current_stock += line.accepted_quantity
-
-            # Sync all pharmaceutical / medicine items to Pharmacy stock & batch
-            cat_str = str(item.category.value if hasattr(item.category, "value") else item.category)
-            if cat_str.lower() in ("pharmaceuticals", "medicine", "medicines") or "pharm" in cat_str.lower():
-                med = db.scalar(
-                    select(Medicine).where(
-                        or_(
-                            Medicine.code == item.item_code,
-                            func.lower(Medicine.name) == item.item_name.lower(),
-                        )
-                    )
-                )
-                if med:
-                    med.current_stock += line.accepted_quantity
-                else:
-                    unit_str = str(item.unit.value if hasattr(item.unit, "value") else item.unit)
-                    med = Medicine(
-                        code=item.item_code,
-                        name=item.item_name,
-                        generic_name=item.item_name,
-                        brand=item.brand or "Standard",
-                        category="Pharmaceuticals",
-                        manufacturer=data.get("vendor_name", "Store Vendor"),
-                        dosage_form="Tablet/Capsule",
-                        strength="Standard",
-                        unit=unit_str or "Piece",
-                        purchase_price=item.unit_price or 0.0,
-                        selling_price=round((item.unit_price or 0.0) * 1.15, 2),
-                        storage_condition="Room Temp",
-                        rack_location=item.storage_location or "Main Store Rack",
-                        status="Active",
-                        current_stock=line.accepted_quantity,
-                        min_stock=item.min_stock or 0,
-                        max_stock=item.max_stock or 0,
-                        reorder_level=item.reorder_level or 0,
-                        branch=data.get("branch"),
-                    )
-                    db.add(med)
-                    db.flush()
-
-                batch_num = f"BATCH-{data['grn_number']}-{item.item_code}"
-                batch = db.scalar(select(PharmacyBatch).where(PharmacyBatch.batch_number == batch_num))
-                if batch:
-                    batch.available_quantity += line.accepted_quantity
-                    batch.quantity_received += line.accepted_quantity
-                    batch.batch_status = "Available"
-                else:
-                    batch = PharmacyBatch(
-                        batch_number=batch_num,
-                        medicine_id=med.id,
-                        medicine_name=item.item_name,
-                        supplier_name=data.get("vendor_name", "Store Vendor"),
-                        manufacturing_date=data.get("received_date", today_str()),
-                        expiry_date="2027-12-31",
-                        purchase_price=item.unit_price or 0.0,
-                        selling_price=round((item.unit_price or 0.0) * 1.15, 2),
-                        quantity_received=line.accepted_quantity,
-                        available_quantity=line.accepted_quantity,
-                        batch_status="Available",
-                        branch=data.get("branch"),
-                    )
-                    db.add(batch)
 
         # Log Stock Inward receipt for store inventory management
         batch_num = f"BAT-{data['grn_number']}-{line.item_code}"
         stock_inw = StockInward(
             inward_number=f"INW-{data['grn_number']}-{line.item_code}",
             po_number=data.get("po_number") or "",
-            item_id=line.item_id,
+            item_id=item.id if item else None,
             item_code=line.item_code,
             item_name=line.item_name,
             quantity=line.accepted_quantity,

@@ -127,11 +127,24 @@ def release_bed(bed_id: str, db: Session = Depends(get_db), _=Depends(get_curren
     if bed.status == BedStatus.Cleaning:
         bed.status = BedStatus.Available
     else:
+        old_patient_uhid = bed.current_patient_uhid
+        old_bed_number = bed.bed_number
+
         bed.status = BedStatus.Cleaning
         bed.current_patient_id = None
         bed.current_patient_uhid = None
         bed.current_patient_name = None
         bed.admitted_date = None
+
+        if old_patient_uhid or old_bed_number:
+            stmt = select(IPDAdmission).where(
+                IPDAdmission.status == IPDStatus.Admitted,
+                or_(IPDAdmission.bed_number == old_bed_number, IPDAdmission.patient_uhid == old_patient_uhid)
+            )
+            admissions = db.scalars(stmt).all()
+            for adm in admissions:
+                adm.status = IPDStatus.Discharged
+
     db.commit()
     db.refresh(bed)
     log_audit(f"POST /beds/{bed_id}/release", {}, {}, bed, bed)

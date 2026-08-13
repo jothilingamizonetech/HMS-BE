@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Pill,
   Plus,
@@ -18,6 +18,7 @@ import {
   RefreshCw,
   Layers,
   ShoppingBag,
+  Clock,
 } from 'lucide-react';
 import { usePharmacy } from '../../../context/PharmacyContext';
 import { useHMS } from '../../../context/HMSContext';
@@ -26,8 +27,9 @@ import { fetchPharmacyTransfersApi, approvePharmacyTransferApi } from '../../../
 
 export const MedicineListPage: React.FC = () => {
   const { medicines: contextMedicines, categories, addMedicine, updateMedicine, deleteMedicine, refreshData } = usePharmacy();
-  const { addToast } = useHMS();
+  const { addToast, storeItems } = useHMS();
   const [medicines, setMedicines] = useState<Medicine[]>(contextMedicines);
+  const [selectedTransferId, setSelectedTransferId] = useState('');
 
   useEffect(() => {
     setMedicines(contextMedicines);
@@ -91,8 +93,8 @@ export const MedicineListPage: React.FC = () => {
       const res = await approvePharmacyTransferApi(transferId);
       addToast(
         'success',
-        'Stock Approved & Added! 🎉',
-        res.message || `Received ${qty} units of ${itemName} into Pharmacy database inventory.`
+        'Transfer Approved! 🎉',
+        res.message || `Approved ${qty} units of ${itemName}. Open '+ Add Medicine' modal to set selling price & add to inventory.`
       );
       await loadStoreTransfers();
       refreshData();
@@ -144,9 +146,180 @@ export const MedicineListPage: React.FC = () => {
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
+  const approvedIssuedProducts = useMemo(() => {
+    const list: {
+      id: string;
+      transferNumber: string;
+      itemCode: string;
+      itemName: string;
+      quantity: number;
+      batchNumber: string;
+      date: string;
+      category?: string;
+      unitPrice?: number;
+      status: string;
+    }[] = [];
+
+    const seenKeys = new Set<string>();
+
+    // 1. Filter ONLY items that are APPROVED / COMPLETED by Pharmacy
+    (transfersData.transfers || [])
+      .filter((t: any) => {
+        const st = String(t.status || '').toLowerCase();
+        return st === 'approved' || st === 'completed' || st === 'received';
+      })
+      .forEach((t: any) => {
+        const storeMatch = storeItems.find(
+          (si) => (si.itemCode || '').toLowerCase().trim() === (t.itemCode || '').toLowerCase().trim()
+        );
+        const key = `${(t.itemCode || '').toLowerCase().trim()}_${t.quantity}`;
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key);
+          list.push({
+            id: String(t.id),
+            transferNumber: t.transferNumber || t.transfer_number || `OUT-${t.id}`,
+            itemCode: t.itemCode || t.item_code || 'MED-001',
+            itemName: t.itemName || t.item_name || 'Product',
+            quantity: Number(t.quantity || 0),
+            batchNumber: t.batchNumber || t.batch_number || 'STORE-BATCH',
+            date: t.date || t.transferDate || new Date().toISOString().split('T')[0],
+            category: storeMatch?.category || 'Pharmaceuticals',
+            unitPrice: storeMatch?.unitPrice || 50,
+            status: 'Approved',
+          });
+        }
+      });
+
+    // 2. If list has items or if fallback store items needed
+    storeItems.forEach((si) => {
+      const codeKey = (si.itemCode || '').toLowerCase().trim();
+      if (!seenKeys.has(codeKey)) {
+        seenKeys.add(codeKey);
+        list.push({
+          id: `store-${si.id}`,
+          transferNumber: `ISSUED-${si.itemCode}`,
+          itemCode: si.itemCode,
+          itemName: si.itemName,
+          quantity: Math.max(10, si.currentStock || 0),
+          batchNumber: 'BAT-STORE-2026',
+          date: new Date().toISOString().split('T')[0],
+          category: si.category || 'Pharmaceuticals',
+          unitPrice: si.unitPrice || 50,
+          status: 'Approved',
+        });
+      }
+    });
+
+    return list;
+  }, [transfersData, storeItems]);
+
+  const { notAddedProducts, alreadyAddedProducts } = useMemo(() => {
+    const notAdded: typeof approvedIssuedProducts = [];
+    const alreadyAdded: typeof approvedIssuedProducts = [];
+
+    approvedIssuedProducts.forEach((st) => {
+      const exists = medicines.some(
+        (m) =>
+          m.code.toLowerCase().trim() === st.itemCode.toLowerCase().trim() ||
+          m.name.toLowerCase().trim() === st.itemName.toLowerCase().trim()
+      );
+      if (exists) {
+        alreadyAdded.push(st);
+      } else {
+        notAdded.push(st);
+      }
+    });
+
+    return { notAddedProducts: notAdded, alreadyAddedProducts: alreadyAdded };
+  }, [approvedIssuedProducts, medicines]);
+
+  const handleIssuedProductSelect = (transferId: string) => {
+    setSelectedTransferId(transferId);
+    if (!transferId) return;
+
+    const matchedIssued = approvedIssuedProducts.find((i) => i.id === transferId || i.transferNumber === transferId);
+    if (!matchedIssued) return;
+
+    const matchedStoreItem = storeItems.find((si) => {
+      const siCode = (si.itemCode || '').toLowerCase().trim();
+      const siName = (si.itemName || '').toLowerCase().trim();
+      const targetCode = (matchedIssued.itemCode || '').toLowerCase().trim();
+      const targetName = (matchedIssued.itemName || '').toLowerCase().trim();
+      return (siCode && siCode === targetCode) || (siName && siName === targetName);
+    });
+
+    // Check if a medicine with this code or name ALREADY exists in Pharmacy Medicine list
+    const existingMed = medicines.find(
+      (m) =>
+        m.code.toLowerCase().trim() === matchedIssued.itemCode.toLowerCase().trim() ||
+        m.name.toLowerCase().trim() === matchedIssued.itemName.toLowerCase().trim()
+    );
+
+    const issuedQtyToAdd = Number(matchedIssued.quantity || 0);
+    const purchasePrice = matchedStoreItem?.unitPrice || matchedIssued.unitPrice || 50;
+    const sellingPrice = matchedStoreItem?.unitPrice ? Math.round(matchedStoreItem.unitPrice * 1.25) : Math.round(purchasePrice * 1.25);
+    const gstRate = matchedStoreItem?.gstPercentage ?? 12;
+
+    if (existingMed) {
+      // DO NOT create a duplicate! UPDATE existing medicine & ADD issued quantity to current stock
+      setIsEditMode(true);
+      setSelectedMedicine(existingMed);
+      setFormCode(existingMed.code);
+      setFormName(existingMed.name);
+      setFormGeneric(matchedStoreItem?.genericComposition || existingMed.genericName || matchedIssued.itemName);
+      setFormBrand(matchedStoreItem?.brand || existingMed.brand || 'Generic');
+      setFormCategory(existingMed.category || matchedIssued.category || 'Pharmaceuticals');
+      setFormManufacturer(existingMed.manufacturer || 'Standard Pharma');
+      setFormDosageForm(matchedStoreItem?.dosageForm || existingMed.dosageForm || 'Tablet');
+      setFormStrength(matchedStoreItem?.strength || existingMed.strength || 'Standard');
+      setFormUnit(matchedStoreItem?.unit || existingMed.unit || 'Box');
+      setFormPurchasePrice(purchasePrice);
+      setFormSellingPrice(existingMed.sellingPrice || sellingPrice);
+      setFormGst(gstRate);
+      setFormStorage(existingMed.storageCondition || 'Store below 25°C');
+      setFormRack(existingMed.rackLocation || 'Rack A-01');
+
+      // Add issued quantity directly to existing product quantity!
+      const newTotalStock = (existingMed.currentStock || 0) + issuedQtyToAdd;
+      setFormCurrentStock(newTotalStock);
+
+      addToast(
+        'info',
+        'Issued Product Matched! 📦',
+        `Matched ${existingMed.name}. Fetched Item Master prices & specifications. Adding +${issuedQtyToAdd} units to stock (${existingMed.currentStock} → ${newTotalStock}).`
+      );
+    } else {
+      // New product issued by Store Manager
+      setIsEditMode(false);
+      setSelectedMedicine(null);
+      setFormCode(matchedIssued.itemCode);
+      setFormName(matchedIssued.itemName);
+      setFormGeneric(matchedStoreItem?.genericComposition || matchedIssued.itemName);
+      setFormBrand(matchedStoreItem?.brand || 'Generic');
+      setFormCategory(matchedIssued.category || 'Pharmaceuticals');
+      setFormManufacturer('Standard Pharma');
+      setFormDosageForm(matchedStoreItem?.dosageForm || 'Tablet');
+      setFormStrength(matchedStoreItem?.strength || 'Standard');
+      setFormUnit(matchedStoreItem?.unit || 'Box');
+      setFormPurchasePrice(purchasePrice);
+      setFormSellingPrice(sellingPrice);
+      setFormGst(gstRate);
+      setFormStorage('Store below 25°C');
+      setFormRack('Rack A-01');
+      setFormCurrentStock(issuedQtyToAdd);
+
+      addToast(
+        'success',
+        'Issued Product Selected! 🏪',
+        `Loaded ${matchedIssued.itemName} (+${issuedQtyToAdd} units). Fetched Item Master prices & specifications.`
+      );
+    }
+  };
+
   const handleOpenAddModal = () => {
     setIsEditMode(false);
     setSelectedMedicine(null);
+    setSelectedTransferId('');
     setFormCode(`MED-${Math.floor(1000 + Math.random() * 9000)}`);
     setFormName('');
     setFormGeneric('');
@@ -209,6 +382,18 @@ export const MedicineListPage: React.FC = () => {
       return;
     }
 
+    if (!formSellingPrice || formSellingPrice <= 0) {
+      addToast('error', 'Selling Price Required', 'Please fix a valid selling price before saving product to inventory.');
+      return;
+    }
+
+    // Check if item already exists by code or name to prevent duplicates
+    const existingCheck = medicines.find(
+      (m) =>
+        m.code.toLowerCase().trim() === formCode.toLowerCase().trim() ||
+        m.name.toLowerCase().trim() === formName.toLowerCase().trim()
+    );
+
     const payload = {
       code: formCode,
       name: formName,
@@ -232,14 +417,35 @@ export const MedicineListPage: React.FC = () => {
     };
 
     try {
-      if (isEditMode && selectedMedicine) {
-        await updateMedicine(selectedMedicine.id, payload);
-        addToast('success', 'Medicine Updated', `${formName} has been updated in DB.`);
+      if ((isEditMode && selectedMedicine) || existingCheck) {
+        const targetId = selectedMedicine?.id || existingCheck?.id!;
+        await updateMedicine(targetId, payload);
+        addToast(
+          'success',
+          'Price Fixed & Stock Updated! 🎉',
+          `${formName} updated with fixed price ₹${formSellingPrice}. Total stock set to ${formCurrentStock} units.`
+        );
       } else {
         await addMedicine(payload);
-        addToast('success', 'Medicine Created', `${formName} added to Medicine Master DB.`);
+        addToast(
+          'success',
+          'Price Fixed & Product Added! 🎉',
+          `${formName} added to Pharmacy inventory with fixed price ₹${formSellingPrice} and ${formCurrentStock} units.`
+        );
       }
+
+      // If linked to a pending store transfer, approve it in backend
+      if (selectedTransferId && !selectedTransferId.startsWith('store-')) {
+        try {
+          await approvePharmacyTransferApi(selectedTransferId);
+          await loadStoreTransfers();
+        } catch (e) {
+          console.warn('Auto-approve transfer notice:', e);
+        }
+      }
+
       setAddEditModalOpen(false);
+      refreshData();
     } catch (err) {
       addToast('error', 'Save Failed', 'Error persisting medicine details to DB.');
     }
@@ -703,6 +909,71 @@ export const MedicineListPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleFormSubmit} className="space-y-4">
+              {/* ── Select Approved Issued Product Sent by Store Manager ── */}
+              <div className="bg-gradient-to-r from-emerald-50 via-teal-50/60 to-blue-50/50 p-4 rounded-xl border border-emerald-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-emerald-950 text-xs flex items-center gap-1.5">
+                    <Truck className="w-4 h-4 text-emerald-600 animate-pulse" /> Select Approved Product Sent by Store Manager *
+                  </label>
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                    <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
+                      ⏳ Not Added: {notAddedProducts.length}
+                    </span>
+                    <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-full">
+                      ✅ Added: {alreadyAddedProducts.length}
+                    </span>
+                  </div>
+                </div>
+
+                <select
+                  value={selectedTransferId}
+                  onChange={(e) => handleIssuedProductSelect(e.target.value)}
+                  className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 font-extrabold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs text-xs"
+                >
+                  <option value="">-- Choose approved product sent by Store Manager --</option>
+
+                  {notAddedProducts.length > 0 && (
+                    <optgroup label="⏳ NOT ADDED TO PHARMACY LIST YET (Requires Price Fix & Save)">
+                      {notAddedProducts.map((st) => (
+                        <option key={st.id} value={st.id}>
+                          ⏳ [NOT ADDED YET] {st.itemName} ({st.itemCode}) — Issued Qty: +{st.quantity} units | Ref #: {st.transferNumber}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+
+                  {alreadyAddedProducts.length > 0 && (
+                    <optgroup label="✅ ALREADY ADDED TO PHARMACY LIST (In Stock)">
+                      {alreadyAddedProducts.map((st) => (
+                        <option key={st.id} value={st.id}>
+                          ✅ [ADDED IN LIST] {st.itemName} ({st.itemCode}) — Issued Qty: +{st.quantity} units | Ref #: {st.transferNumber}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+
+                {selectedTransferId && (
+                  <div className="pt-1">
+                    {isEditMode ? (
+                      <div className="flex items-center gap-2 p-2.5 bg-emerald-100/90 border border-emerald-300 text-emerald-950 rounded-xl font-bold text-[11px]">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                        <span>Status: <strong>ALREADY ADDED IN PHARMACY LIST</strong> — Saving will update stock & selling price.</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 p-2.5 bg-amber-100/90 border border-amber-300 text-amber-950 rounded-xl font-bold text-[11px]">
+                        <Clock className="w-4 h-4 text-amber-700 shrink-0 animate-bounce" />
+                        <span>Status: <strong>NOT ADDED YET</strong> — Set selling price below and click "Save Medicine" to add to pharmacy list.</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-[10px] text-slate-600 font-medium">
+                  💡 Products are categorized into <strong>NOT ADDED YET</strong> (waiting for selling price fix) and <strong>ALREADY ADDED</strong> (in stock). Select a product, fix the selling price below, and click Save.
+                </p>
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Medicine Code *</label>
@@ -787,23 +1058,29 @@ export const MedicineListPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 p-3.5 bg-gradient-to-r from-emerald-50/90 to-teal-50/70 rounded-xl border border-emerald-300/80 shadow-2xs">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Purchase Price (₹)</label>
                   <input
                     type="number"
                     value={formPurchasePrice}
                     onChange={(e) => setFormPurchasePrice(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Selling Price (₹)</label>
+                  <label className="block font-bold text-emerald-900 mb-1 flex items-center justify-between">
+                    <span>Selling Price (₹) *</span>
+                    <span className="text-[9px] bg-emerald-600 text-white font-black px-1.5 py-0.5 rounded-md shadow-xs">Fix Price Required</span>
+                  </label>
                   <input
                     type="number"
+                    required
+                    min={1}
                     value={formSellingPrice}
                     onChange={(e) => setFormSellingPrice(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
+                    placeholder="Set Selling Price"
+                    className="w-full bg-white border-2 border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 rounded-xl px-3 py-2 font-black text-emerald-900 outline-none text-sm shadow-xs"
                   />
                 </div>
                 <div>
@@ -812,16 +1089,19 @@ export const MedicineListPage: React.FC = () => {
                     type="number"
                     value={formGst}
                     onChange={(e) => setFormGst(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
+                    className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
                   />
                 </div>
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Initial Stock</label>
+                  <label className="block font-bold text-indigo-900 mb-1 flex items-center justify-between">
+                    <span>Total Product Stock</span>
+                    <span className="text-[9px] bg-indigo-600 text-white font-black px-1.5 py-0.5 rounded-md shadow-xs">+Issued Added</span>
+                  </label>
                   <input
                     type="number"
                     value={formCurrentStock}
                     onChange={(e) => setFormCurrentStock(Number(e.target.value))}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
+                    className="w-full bg-white border-2 border-indigo-400 rounded-xl px-3 py-2 font-black text-indigo-900 outline-none text-sm"
                   />
                 </div>
               </div>

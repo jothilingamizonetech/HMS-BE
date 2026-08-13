@@ -500,6 +500,8 @@ export interface PrescriptionItem {
   price: number;
   unitPrice?: number;
   dispensed: boolean;
+  route?: string;
+  frequency?: string;
 }
 
 export interface PrescriptionOrder {

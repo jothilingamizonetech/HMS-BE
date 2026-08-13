@@ -128,6 +128,14 @@ async def lifespan(app: FastAPI):
             ]:
                 conn.execute(sa.text(f"ALTER TABLE stock_adjustment ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
 
+            for col_name, col_type in [
+                ('generic_composition', 'VARCHAR(250)'),
+                ('strength', 'VARCHAR(100)'),
+                ('dosage_form', 'VARCHAR(100)'),
+            ]:
+                conn.execute(sa.text(f"ALTER TABLE item_master ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                conn.execute(sa.text(f"ALTER TABLE medicines ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+
 
 
             conn.execute(sa.text("ALTER TABLE working_hours ALTER COLUMN day_of_week TYPE VARCHAR(200)"))
@@ -163,15 +171,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-    ] + settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

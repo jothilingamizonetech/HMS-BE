@@ -22,9 +22,10 @@ import { usePharmacy } from '../../../context/PharmacyContext';
 import { PrescriptionOrder, PrescriptionItem } from '../../../types/hms';
 import { useHMS } from '../../../context/HMSContext';
 import { updatePrescriptionApi } from '../../../services/api';
+import { parsePrescriptionDurationDays, parsePrescriptionFrequency, parseTabsPerDose } from '../../../utils/helpers';
 
 export const PrescriptionDispensingPage: React.FC = () => {
-  const { addToast } = useHMS();
+  const { addToast, storeItems } = useHMS();
   const { prescriptions: initialPrescriptions, medicines, refreshData } = usePharmacy();
   const [prescriptions, setPrescriptions] = useState<PrescriptionOrder[]>(initialPrescriptions);
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,25 +69,47 @@ export const PrescriptionDispensingPage: React.FC = () => {
       return false;
     });
 
-    const qty = Math.max(1, item.quantity || 1);
+    const matchingStoreItem = storeItems.find((s) => {
+      const sName = (s.itemName || '').toLowerCase().trim();
+      const sCode = (s.itemCode || '').toLowerCase().trim();
+      const sGen = (s.genericComposition || '').toLowerCase().trim();
+      if (sName === itemNameClean || sCode === itemNameClean || sGen === itemNameClean) return true;
+      if (itemNameClean && (sName.includes(itemNameClean) || itemNameClean.includes(sName) || sGen.includes(itemNameClean))) return true;
+      return false;
+    });
+
+    const freqStr = String(item.frequency || item.dosage || '1-0-1');
+    const durStr = String(item.duration || item.days || '5 days');
+    const dosStr = String(item.dosage || '1 tablet');
+
+    const freqInfo = parsePrescriptionFrequency(freqStr, dosStr);
+    const dosesPerDay = freqInfo.dosesPerDay || 2;
+    const durationDays = parsePrescriptionDurationDays(durStr);
+    const tabsPerDose = parseTabsPerDose(dosStr);
+
+    const calculatedTotalQty = dosesPerDay * tabsPerDose * durationDays;
+    const qty = item.quantity && item.quantity > 1 ? item.quantity : Math.max(1, calculatedTotalQty);
     let unitPrice = item.unitPrice;
     if (unitPrice === undefined || unitPrice <= 0) {
       if (matchingMed?.sellingPrice && matchingMed.sellingPrice > 0) {
         unitPrice = matchingMed.sellingPrice;
+      } else if (matchingStoreItem?.unitPrice && matchingStoreItem.unitPrice > 0) {
+        unitPrice = Math.round(matchingStoreItem.unitPrice * 1.25);
       } else if (item.price && item.price > qty) {
         unitPrice = item.price / qty;
       } else {
-        unitPrice = item.price && item.price > 0 ? item.price : 15;
+        unitPrice = item.price && item.price > 0 ? item.price : (matchingStoreItem?.unitPrice || 15);
       }
     }
 
     const subtotal = qty * unitPrice;
-    const gstPercent = matchingMed?.gst ?? (matchingMed as any)?.gst_percentage ?? (item as any).gst ?? 12;
+    const gstPercent = matchingMed?.gst ?? (matchingMed as any)?.gst_percentage ?? matchingStoreItem?.gstPercentage ?? (item as any).gst ?? 12;
     const gstAmount = subtotal * (gstPercent / 100);
     const totalWithGst = subtotal + gstAmount;
 
     return {
       matchingMed,
+      matchingStoreItem,
       qty,
       unitPrice,
       subtotal,
@@ -650,14 +673,28 @@ export const PrescriptionDispensingPage: React.FC = () => {
                           </div>
                         </td>
                         <td className="p-3">
-                          <div className="flex items-center gap-1 text-[10px] font-bold">
-                            <span className={`px-1.5 py-0.5 rounded ${item.morning ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>M</span>
-                            <span className={`px-1.5 py-0.5 rounded ${item.afternoon ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>A</span>
-                            <span className={`px-1.5 py-0.5 rounded ${item.night ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-400'}`}>N</span>
-                            <span className="text-slate-500 ml-1">({item.dosage})</span>
-                          </div>
+                          {(() => {
+                            let morning = item.morning, afternoon = item.afternoon, night = item.night;
+                            if (morning === undefined || afternoon === undefined || night === undefined) {
+                              const freqInfo = parsePrescriptionFrequency(item.frequency, item.dosage);
+                              morning = freqInfo.morning;
+                              afternoon = freqInfo.afternoon;
+                              night = freqInfo.night;
+                            }
+
+                            return (
+                              <div className="flex items-center gap-1 text-[10px] font-bold">
+                                <span className={`px-1.5 py-0.5 rounded ${morning ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>M</span>
+                                <span className={`px-1.5 py-0.5 rounded ${afternoon ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-400'}`}>A</span>
+                                <span className={`px-1.5 py-0.5 rounded ${night ? 'bg-indigo-100 text-indigo-900' : 'bg-slate-100 text-slate-400'}`}>N</span>
+                                <span className="text-slate-500 ml-1">({item.dosage || item.frequency || 'Tablet'})</span>
+                              </div>
+                            );
+                          })()}
                         </td>
-                        <td className="p-3 text-slate-700 font-semibold">{item.days} days</td>
+                        <td className="p-3 text-slate-700 font-semibold">
+                          {item.duration ? item.duration : (item.days ? `${item.days} Days` : '5 Days')}
+                        </td>
                         <td className="p-3 font-semibold text-slate-700">₹{fin.unitPrice.toFixed(2)}</td>
                         <td className="p-3 font-bold text-slate-900">₹{fin.subtotal.toFixed(2)}</td>
                         <td className="p-3 text-xs">

@@ -30,6 +30,7 @@ export interface PatientOrder {
   patientUhid: string;
   age: number;
   gender: 'Male' | 'Female' | 'Other';
+  bloodGroup: string;
   doctorName: string;
   department: string;
   orderDate: string;
@@ -54,8 +55,8 @@ const AVAILABLE_TESTS_CATALOG = [
 ];
 
 export const ResultEntryPage: React.FC = () => {
-  const { labResults, labReports, saveLabResult, updateLabResult, updateLabReport, createPatientOrderFromOPD } = useLab();
-  const { addToast } = useHMS();
+  const { labResults, labReports, saveLabResult, updateLabResult, updateLabReport, createPatientOrderFromOPD, generateReport } = useLab();
+  const { addToast, patients } = useHMS();
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -93,6 +94,7 @@ export const ResultEntryPage: React.FC = () => {
     patientUhid: '',
     age: 35,
     gender: 'Male' as 'Male' | 'Female' | 'Other',
+    bloodGroup: 'O+',
     doctorName: 'Dr. Vikram Malhotra',
     department: 'General Medicine',
     priority: 'Normal' as 'Normal' | 'STAT' | 'Emergency',
@@ -142,13 +144,22 @@ export const ResultEntryPage: React.FC = () => {
           ? 'Completed'
           : 'Pending';
 
+      // Look up real patient details from registered patients list if available
+      const patMatch = patients?.find(
+        (p) => p.uhid.toLowerCase().trim() === rep.patientUhid.toLowerCase().trim() || p.id === rep.patientUhid
+      );
+      const age = patMatch?.age || rep.patientAge || 30;
+      const gender = patMatch?.gender || rep.patientGender || 'Male';
+      const bloodGroup = patMatch?.bloodGroup || (rep as any).bloodGroup || 'O+';
+
       mapBySample.set(sampleId, {
         id: `ord-${sampleId}`,
         sampleId,
-        patientName: rep.patientName,
+        patientName: patMatch ? `${patMatch.firstName} ${patMatch.lastName}` : rep.patientName,
         patientUhid: rep.patientUhid,
-        age: rep.patientAge || 30,
-        gender: rep.patientGender || 'Male',
+        age,
+        gender,
+        bloodGroup,
         doctorName: rep.doctorName || 'Doctor',
         department: rep.department || 'Pathology',
         orderDate: rep.generatedDate || new Date().toLocaleString(),
@@ -160,6 +171,13 @@ export const ResultEntryPage: React.FC = () => {
 
     // 2. Merge existing labResults
     labResults.forEach((res) => {
+      const patMatch = patients?.find(
+        (p) => p.uhid.toLowerCase().trim() === res.patientUhid.toLowerCase().trim() || p.id === res.patientUhid
+      );
+      const age = patMatch?.age || 35;
+      const gender = patMatch?.gender || 'Male';
+      const bloodGroup = patMatch?.bloodGroup || 'O+';
+
       if (mapBySample.has(res.sampleId)) {
         const existing = mapBySample.get(res.sampleId)!;
         const existingIdx = existing.tests.findIndex((t) => t.id === res.id || t.testName.toLowerCase().trim() === res.testName.toLowerCase().trim());
@@ -167,6 +185,11 @@ export const ResultEntryPage: React.FC = () => {
           existing.tests[existingIdx] = res;
         } else {
           existing.tests.push(res);
+        }
+        if (patMatch) {
+          existing.age = patMatch.age;
+          existing.gender = patMatch.gender;
+          existing.bloodGroup = patMatch.bloodGroup;
         }
         const hasCritical = existing.tests.some((t) => t.flag === 'Critical' || t.status === 'Critical');
         const allFilled = existing.tests.length > 0 && existing.tests.every((t) => t.resultValue && t.resultValue.trim() !== '' && t.resultValue !== '(Pending)');
@@ -181,10 +204,11 @@ export const ResultEntryPage: React.FC = () => {
         mapBySample.set(res.sampleId, {
           id: `ord-${res.sampleId}`,
           sampleId: res.sampleId,
-          patientName: res.patientName,
+          patientName: patMatch ? `${patMatch.firstName} ${patMatch.lastName}` : res.patientName,
           patientUhid: res.patientUhid,
-          age: 35,
-          gender: 'Male',
+          age,
+          gender,
+          bloodGroup,
           doctorName: 'Dr. Doctor',
           department: 'General Medicine',
           orderDate: res.entryDate || new Date().toLocaleString(),
@@ -196,7 +220,7 @@ export const ResultEntryPage: React.FC = () => {
     });
 
     return Array.from(mapBySample.values());
-  }, [labReports, labResults]);
+  }, [labReports, labResults, patients]);
 
   const [patientOrders, setPatientOrders] = useState<PatientOrder[]>(initialPatientOrders);
 
@@ -349,9 +373,13 @@ export const ResultEntryPage: React.FC = () => {
     );
     if (matchingRep) {
       await updateLabReport(matchingRep.id, {
+        patientName: matchingRep.patientName,
+        reportNumber: matchingRep.reportNumber,
         testResults: updatedTests,
         status: newOverallStatus === 'Completed' ? 'Generated' : matchingRep.status,
       });
+    } else {
+      generateReport(selectedOrder.patientUhid, selectedOrder.tests.map((t) => t.testName), selectedOrder.sampleId);
     }
 
     // Single common toast notification
@@ -375,6 +403,7 @@ export const ResultEntryPage: React.FC = () => {
       patientUhid: `UHID-2026-${nextNum}`,
       age: 35,
       gender: 'Male',
+      bloodGroup: 'O+',
       doctorName: 'Dr. Vikram Malhotra',
       department: 'General Medicine',
       priority: 'Normal',
@@ -573,7 +602,13 @@ export const ResultEntryPage: React.FC = () => {
                         </div>
                         <div>
                           <p className="font-bold text-slate-900 text-xs">{order.patientName}</p>
-                          <p className="text-[10px] text-blue-600 font-semibold">{order.patientUhid} • {order.age} Yrs / {order.gender}</p>
+                          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 mt-0.5">
+                            <span className="text-blue-600 font-bold">{order.patientUhid}</span>
+                            <span>•</span>
+                            <span>{order.age} Yrs / {order.gender}</span>
+                            <span>•</span>
+                            <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100">{order.bloodGroup || 'O+'}</span>
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -715,7 +750,7 @@ export const ResultEntryPage: React.FC = () => {
               </button>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200/80 text-xs">
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block">Sample ID</span>
                 <span className="font-mono font-bold text-slate-800">{selectedOrder.sampleId}</span>
@@ -723,6 +758,10 @@ export const ResultEntryPage: React.FC = () => {
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block">Age / Gender</span>
                 <span className="font-bold text-slate-800">{selectedOrder.age} Yrs / {selectedOrder.gender}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Blood Group</span>
+                <span className="font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-100">{selectedOrder.bloodGroup || 'O+'}</span>
               </div>
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block">Doctor</span>
@@ -844,6 +883,10 @@ export const ResultEntryPage: React.FC = () => {
                 <div>
                   <span className="text-[10px] text-slate-500 font-bold uppercase block">Age / Gender</span>
                   <span className="font-bold text-slate-900">{selectedOrder.age} Yrs / {selectedOrder.gender}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Blood Group</span>
+                  <span className="font-bold text-rose-600 bg-rose-100/80 px-2 py-0.5 rounded border border-rose-200">{selectedOrder.bloodGroup || 'O+'}</span>
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-500 font-bold uppercase block">Referring Doctor</span>
@@ -1032,6 +1075,36 @@ export const ResultEntryPage: React.FC = () => {
             </div>
 
             <form onSubmit={handleCreateOrderSubmit} className="space-y-4 text-xs">
+              {/* Select Existing Registered Patient Dropdown */}
+              {patients && patients.length > 0 && (
+                <div className="bg-blue-50/60 p-3 rounded-2xl border border-blue-100">
+                  <label className="block font-bold text-blue-900 mb-1 text-[11px]">Select Registered Patient (Auto-fill Demographics)</label>
+                  <select
+                    onChange={(e) => {
+                      const selected = patients.find((p) => p.id === e.target.value || p.uhid === e.target.value);
+                      if (selected) {
+                        setCreateOrderForm({
+                          ...createOrderForm,
+                          patientName: `${selected.firstName} ${selected.lastName}`,
+                          patientUhid: selected.uhid,
+                          age: selected.age,
+                          gender: selected.gender,
+                          bloodGroup: selected.bloodGroup || 'O+',
+                        });
+                      }
+                    }}
+                    className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 font-medium text-slate-800 text-xs"
+                  >
+                    <option value="">-- Choose Registered Patient --</option>
+                    {patients.map((p) => (
+                      <option key={p.id} value={p.uhid}>
+                        {p.firstName} {p.lastName} ({p.uhid}) • {p.age} Yrs / {p.gender} • Blood Group: {p.bloodGroup}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Patient Name *</label>
@@ -1057,7 +1130,7 @@ export const ResultEntryPage: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">Age</label>
                   <input
@@ -1078,6 +1151,24 @@ export const ResultEntryPage: React.FC = () => {
                     <option value="Male">Male</option>
                     <option value="Female">Female</option>
                     <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Blood Group</label>
+                  <select
+                    value={createOrderForm.bloodGroup}
+                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, bloodGroup: e.target.value })}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-rose-600"
+                  >
+                    <option value="A+">A+</option>
+                    <option value="A-">A-</option>
+                    <option value="B+">B+</option>
+                    <option value="B-">B-</option>
+                    <option value="AB+">AB+</option>
+                    <option value="AB-">AB-</option>
+                    <option value="O+">O+</option>
+                    <option value="O-">O-</option>
                   </select>
                 </div>
 
@@ -1228,11 +1319,13 @@ export const ResultEntryPage: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-4 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs">
-              <div>
+              <div className="space-y-1">
                 <p><span className="text-slate-400 font-bold uppercase text-[10px]">Patient Name:</span> <strong>{selectedOrder.patientName}</strong></p>
                 <p><span className="text-slate-400 font-bold uppercase text-[10px]">UHID:</span> <strong className="text-blue-600">{selectedOrder.patientUhid}</strong></p>
+                <p><span className="text-slate-400 font-bold uppercase text-[10px]">Blood Group:</span> <strong className="text-rose-600 font-bold">{selectedOrder.bloodGroup || 'O+'}</strong></p>
               </div>
-              <div>
+              <div className="space-y-1">
+                <p><span className="text-slate-400 font-bold uppercase text-[10px]">Age / Gender:</span> <strong>{selectedOrder.age} Yrs / {selectedOrder.gender}</strong></p>
                 <p><span className="text-slate-400 font-bold uppercase text-[10px]">Sample ID:</span> <strong>{selectedOrder.sampleId}</strong></p>
                 <p><span className="text-slate-400 font-bold uppercase text-[10px]">Doctor:</span> <strong>{selectedOrder.doctorName}</strong></p>
               </div>
