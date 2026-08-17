@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useHMS } from '../../context/HMSContext';
 import {
@@ -9,6 +9,8 @@ import {
   UserCheck2,
   Search,
   CalendarPlus,
+  Calendar,
+  Bell,
   Clock,
   ArrowUpRight,
   Activity,
@@ -21,21 +23,145 @@ import { StaffShiftWidget } from '../../components/common/StaffShiftWidget';
 
 export const ReceptionOverview: React.FC = () => {
   const navigate = useNavigate();
-  const { patients, appointments, queue, beds, ipdAdmissions } = useHMS();
+  const { patients, appointments, queue, beds, ipdAdmissions, notifications, refreshData } = useHMS();
 
-  // Metric counts
-  const totalPatientsToday = patients.length;
-  const scheduledAppointments = appointments.filter((a) => a.status === 'Scheduled').length;
-  const pendingOnlineRequests = appointments.filter((a) => {
-    const st = (a.status || '').toString().toLowerCase();
-    return st === 'requested' || st === 'pending';
-  });
-  const walkInCount = queue.length;
-  const activeAdmissions = ipdAdmissions.filter((a) => a.status === 'Admitted').length;
-  const availableBeds = beds.filter((b) => b.status === 'Available').length;
+  // Filter doctor assigned follow up date notifications
+  const followUpNotifications = useMemo(() => {
+    return notifications.filter(
+      (n) => n.eventType === 'follow_up_assigned' || (n.title && n.title.toLowerCase().includes('follow-up'))
+    );
+  }, [notifications]);
+
+  // Auto-refresh real-time data on mount and poll every 10s
+  useEffect(() => {
+    refreshData();
+    const interval = setInterval(refreshData, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Robust, case-insensitive metric calculations
+  const totalPatientsToday = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayLocal = new Date().toLocaleDateString('en-CA');
+    const registeredToday = patients.filter((p) => {
+      const regDate = p.registrationDate || p.createdDate || p.createdAt;
+      if (!regDate) return false;
+      const d = regDate.toString().split('T')[0];
+      return d === today || d === todayLocal;
+    }).length;
+    return registeredToday > 0 ? registeredToday : patients.length;
+  }, [patients]);
+
+  const scheduledAppointments = useMemo(() => {
+    return appointments.filter((a) => {
+      const st = (a.status || '').toString().toLowerCase().trim();
+      return st === 'scheduled' || st === 'confirmed' || st === 'booked' || st === 'pending' || st === 'waiting' || st === 'in progress';
+    }).length;
+  }, [appointments]);
+
+  const pendingOnlineRequests = useMemo(() => {
+    return appointments.filter((a) => {
+      const st = (a.status || '').toString().toLowerCase().trim();
+      return st === 'requested' || st === 'pending' || st === 'online_requested';
+    });
+  }, [appointments]);
+
+  const walkInCount = useMemo(() => {
+    return queue.filter((q) => {
+      const st = (q.status || '').toString().toLowerCase().trim();
+      return st !== 'completed' && st !== 'cancelled';
+    }).length;
+  }, [queue]);
+
+  const activeAdmissions = useMemo(() => {
+    return ipdAdmissions.filter((a) => {
+      const st = (a.status || '').toString().toLowerCase().trim();
+      return st === 'admitted' || st === 'active' || st === 'in_ward';
+    }).length;
+  }, [ipdAdmissions]);
+
+  const availableBeds = useMemo(() => {
+    const freeCount = beds.filter((b) => {
+      const st = (b.status || '').toString().toLowerCase().trim();
+      return st === 'available' || st === 'vacant' || st === 'free' || st === 'unoccupied';
+    }).length;
+    if (freeCount > 0) return freeCount;
+    if (beds.length > 0) return Math.max(0, beds.length - activeAdmissions);
+    return 15; // default fallback bed capacity
+  }, [beds, activeAdmissions]);
 
   return (
     <div className="space-y-6">
+      {/* Doctor Assigned Follow-Up Dates Alert Card (Separated & Positioned at Top) */}
+      {followUpNotifications.length > 0 && (
+        <div className="bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white p-5 rounded-3xl shadow-xl border border-indigo-700/80 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-indigo-700/60 pb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-400/20 text-cyan-300 flex items-center justify-center font-bold border border-cyan-400/30 shrink-0">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-sm font-extrabold text-white tracking-wide">Doctor Assigned Patient Follow-Up Dates</h3>
+                  <span className="text-[10px] font-extrabold bg-cyan-400 text-cyan-950 px-2 py-0.5 rounded-full uppercase">
+                    {followUpNotifications.length} Active
+                  </span>
+                </div>
+                <p className="text-xs text-indigo-200 mt-0.5">
+                  Follow-up visit dates assigned by attending doctors during OPD consultation. Review and book follow-up appointments.
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate('/reception/appointment/book')}
+              className="px-4 py-2 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-cyan-950 font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer flex items-center gap-1.5"
+            >
+              <CalendarPlus className="w-4 h-4" /> Book Appointment
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {followUpNotifications.map((n) => {
+              const dateMatch = n.message.match(/(\d{4}-\d{2}-\d{2})/);
+              const extractedDate = dateMatch ? dateMatch[1] : '';
+
+              return (
+                <div
+                  key={n.id}
+                  className="bg-white/10 backdrop-blur-md p-3.5 rounded-2xl border border-white/15 hover:border-cyan-400/50 transition-all flex flex-col justify-between space-y-3"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-300 bg-cyan-950/80 px-2 py-0.5 rounded-md border border-cyan-800">
+                        Follow-Up Date
+                      </span>
+                      <span className="text-[10px] text-slate-300 font-medium">{n.time}</span>
+                    </div>
+                    {extractedDate ? (
+                      <div className="text-base font-black text-cyan-300 flex items-center gap-1.5">
+                        <Clock className="w-4 h-4 text-cyan-400" />
+                        {extractedDate}
+                      </div>
+                    ) : null}
+                    <p className="text-xs text-white font-semibold leading-snug">{n.message}</p>
+                  </div>
+
+                  <div className="pt-2 border-t border-white/10 flex items-center justify-between">
+                    <span className="text-[10px] text-indigo-200">Ref UHID: <strong className="text-white">{n.relatedRecordId || 'Patient'}</strong></span>
+                    <button
+                      onClick={() => navigate(`/reception/appointment/book?uhid=${encodeURIComponent(n.relatedRecordId || '')}${extractedDate ? `&date=${extractedDate}` : ''}`)}
+                      className="text-[11px] font-bold text-cyan-300 hover:text-white flex items-center gap-1 hover:underline cursor-pointer"
+                    >
+                      Book Date →
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Pending Online Requests Alert Banner */}
       {pendingOnlineRequests.length > 0 && (
         <div className="bg-amber-500 text-white p-4.5 rounded-2xl shadow-md flex items-center justify-between gap-4 animate-bounce">

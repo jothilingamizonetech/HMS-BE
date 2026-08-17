@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 from sqlalchemy.orm import Session
 
 from app.core.crud_utils import get_or_404, apply_updates
@@ -13,33 +13,65 @@ from app.schemas.notification import NotificationCreate, NotificationUpdate, Not
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
+ROLE_ALIASES = {
+    "reception": ["reception", "receptionist", "front_desk"],
+    "receptionist": ["reception", "receptionist", "front_desk"],
+    "doctor": ["doctor", "physician"],
+    "nurse": ["nurse"],
+    "pharmacy": ["pharmacy", "pharmacist"],
+    "pharmacist": ["pharmacy", "pharmacist"],
+    "store": ["store", "store_manager", "inventory"],
+    "store_manager": ["store", "store_manager", "inventory"],
+    "inventory": ["store", "store_manager", "inventory"],
+    "lab": ["lab", "lab_technician", "laboratory"],
+    "lab_technician": ["lab", "lab_technician", "laboratory"],
+    "laboratory": ["lab", "lab_technician", "laboratory"],
+    "admin": ["admin", "super_admin", "superadmin", "administrator"],
+    "super_admin": ["admin", "super_admin", "superadmin", "administrator"],
+    "superadmin": ["admin", "super_admin", "superadmin", "administrator"],
+    "patient": ["patient"],
+}
+
+
+def _get_role_variants(user: User) -> list[str]:
+    raw_role = (user.role.value if hasattr(user.role, "value") else str(user.role or "")).strip().lower()
+    variants = {raw_role, raw_role.replace(" ", "_"), raw_role.replace("_", " ")}
+    if raw_role in ROLE_ALIASES:
+        for alias in ROLE_ALIASES[raw_role]:
+            variants.add(alias.lower())
+    return [v for v in variants if v]
+
+
+def _build_user_notification_filter(current_user: User):
+    role_variants = [r.lower() for r in _get_role_variants(current_user)]
+    is_admin = any(r in ("admin", "super_admin", "superadmin") for r in role_variants)
+
+    conditions = [
+        Notification.user_id == current_user.id,
+        func.lower(Notification.recipient_role).in_(role_variants),
+    ]
+    if is_admin:
+        # Admins also see untargeted system broadcasts
+        conditions.append(Notification.user_id.is_(None) & Notification.recipient_role.is_(None))
+
+    return or_(*conditions)
+
 
 def _notification_visible_to(notification: Notification, current_user: User) -> bool:
-    """Ownership/visibility check for a single notification.
-
-    Mirrors the exact filter already used by list_notifications/get_notification_count
-    (own user_id, own role broadcast, or a fully-global user_id+recipient_role-less
-    notification) so a user can only mark-read/update/delete a notification they were
-    actually allowed to see in their own notification list. Without this, any
-    authenticated user could mark-read or delete *any* notification in the system by
-    guessing/enumerating its id, regardless of who it was addressed to -- confirmed by
-    reading update_notification/mark_single_notification_read/delete_notification below,
-    none of which checked ownership before this fix.
-
-    Note: there is no dedicated "Notifications" module in the frontend's
-    PermissionManagementPage.tsx modulesList, so this is a row-level ownership check
-    rather than require_permission()-style module/action enforcement -- a Super Admin
-    has no module toggle to configure for notifications in the first place, and it
-    wouldn't be the right tool here anyway: this is about *whose* notification it is,
-    not *what role* is allowed to touch notifications in general.
-    """
-    role_str = (current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role or "")).lower()
+    """Ownership/visibility check for a single notification based strictly on user assignment or role allocation."""
     if notification.user_id == current_user.id:
         return True
-    if notification.recipient_role and notification.recipient_role.lower() in (role_str, str(current_user.role).lower()):
+
+    role_variants = [r.lower() for r in _get_role_variants(current_user)]
+    if notification.recipient_role:
+        recip = notification.recipient_role.lower().strip()
+        if recip in role_variants:
+            return True
+
+    is_admin = any(r in ("admin", "super_admin", "superadmin") for r in role_variants)
+    if is_admin and notification.user_id is None and notification.recipient_role is None:
         return True
-    if notification.user_id is None and notification.recipient_role is None:
-        return True
+
     return False
 
 
@@ -49,16 +81,7 @@ def list_notifications(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    role_str = (current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role or "")).lower()
-    
-    stmt = select(Notification).where(
-        or_(
-            Notification.user_id == current_user.id,
-            Notification.recipient_role == role_str,
-            Notification.recipient_role == str(current_user.role),
-            (Notification.user_id.is_(None) & Notification.recipient_role.is_(None)),
-        )
-    )
+    stmt = select(Notification).where(_build_user_notification_filter(current_user))
     if unread_only:
         stmt = stmt.where(Notification.read.is_(False))
     stmt = stmt.order_by(Notification.created_at.desc())
@@ -70,16 +93,7 @@ def get_notification_count(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    role_str = (current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role or "")).lower()
-    
-    stmt = select(Notification).where(
-        or_(
-            Notification.user_id == current_user.id,
-            Notification.recipient_role == role_str,
-            Notification.recipient_role == str(current_user.role),
-            (Notification.user_id.is_(None) & Notification.recipient_role.is_(None)),
-        )
-    )
+    stmt = select(Notification).where(_build_user_notification_filter(current_user))
     all_notifs = db.scalars(stmt).all()
     unread_count = sum(1 for n in all_notifs if not n.read)
     return {"unread_count": unread_count, "total_count": len(all_notifs)}
@@ -103,15 +117,8 @@ def create_notification(
 @router.put("/read-all", response_model=list[NotificationOut])
 @router.post("/read-all", response_model=list[NotificationOut])
 def mark_all_read(db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user)):
-    role_str = (current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role or "")).lower()
-    
     stmt = select(Notification).where(
-        or_(
-            Notification.user_id == current_user.id,
-            Notification.recipient_role == role_str,
-            Notification.recipient_role == str(current_user.role),
-            (Notification.user_id.is_(None) & Notification.recipient_role.is_(None)),
-        ),
+        _build_user_notification_filter(current_user),
         Notification.read.is_(False),
     )
     items = db.scalars(stmt).all()

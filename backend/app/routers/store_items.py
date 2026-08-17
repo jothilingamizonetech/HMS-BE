@@ -74,6 +74,18 @@ def create_item(payload: ItemMasterCreate, db: Session = Depends(get_db), curren
         data["current_stock"] = data["opening_stock"]
     if not data.get("branch"):
         data["branch"] = current_user.branch
+
+    # Ensure item_code is unique to prevent database IntegrityError
+    item_code = data.get("item_code") or f"ITM-{100 + db.query(ItemMaster).count() + 1}"
+    existing = db.scalar(select(ItemMaster).where(ItemMaster.item_code == item_code))
+    if existing:
+        base_code = item_code
+        count = 1
+        while db.scalar(select(ItemMaster).where(ItemMaster.item_code == item_code)):
+            count += 1
+            item_code = f"{base_code}-{count}"
+        data["item_code"] = item_code
+
     item = ItemMaster(**data)
     db.add(item)
     db.commit()

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLab } from '../../../context/LabContext';
 import {
   Search, ArrowLeft, User, Phone, Droplets, BedDouble, Stethoscope,
@@ -222,7 +222,16 @@ const StatusBadge: React.FC<{ status: string; dot?: boolean }> = ({ status, dot 
 
 // ─── Main Component ───────────────────────────────────────────
 export const MedicalHistoryPage: React.FC = () => {
-  const { labReports, doctorReviewReport, createPatientOrderFromOPD } = useLab();
+  const { labReports, testMasterList, doctorReviewReport, createPatientOrderFromOPD } = useLab();
+
+  const dynamicLabTestOptions = useMemo(() => {
+    const set = new Set<string>(LAB_TEST_OPTIONS);
+    (testMasterList || []).forEach((t) => {
+      if (t.testName) set.add(t.testName);
+    });
+    return Array.from(set);
+  }, [testMasterList]);
+
   const [patients, setPatients] = useState<IPDPatientRecord[]>(INITIAL_PATIENTS);
   
   // View mode: 'list' (Full Screen Table) | 'details' (Full Screen 9-Section EMR)
@@ -231,7 +240,7 @@ export const MedicalHistoryPage: React.FC = () => {
   const [activeSection, setActiveSection] = useState<IPDSectionKey>('patient_admission');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
-  const [selectedDateFilter, setSelectedDateFilter] = useState<string>('2026-07-24');
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string>('');
 
   // Modals & Form States
   const [showAddRoundModal, setShowAddRoundModal] = useState<boolean>(false);
@@ -339,13 +348,141 @@ export const MedicalHistoryPage: React.FC = () => {
       try {
         const token = localStorage.getItem('hms_token');
         const apiHost = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '').replace(/\/api\/v1$/, '');
-        const res = await fetch(`${apiHost}/api/v1/doctors/ipd-records`, {
+        const res = await fetch(`${apiHost}/api/v1/ipd-admissions`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
-            setPatients(data);
+            const mappedRecords: IPDPatientRecord[] = data.map((adm: any) => ({
+              patientId: adm.patient_uhid || adm.patientUhid || `UHID-${adm.id}`,
+              ipNumber: adm.ip_number || adm.ipNumber || `IP-2026-${1000 + adm.id}`,
+              patientName: adm.patient_name || adm.patientName || 'Inpatient',
+              age: adm.age ?? 42,
+              gender: adm.gender || 'Male',
+              bloodGroup: adm.blood_group || adm.bloodGroup || 'O+',
+              mobileNumber: adm.mobile || adm.mobile_number || adm.mobileNumber || '9876543210',
+              emergencyContact: {
+                name: 'Emergency Contact',
+                relationship: 'Family',
+                phone: adm.mobile || '9876543210',
+              },
+              admissionDateTime: adm.admission_date || adm.admissionDate || (adm.created_at ? adm.created_at.split('T')[0] : new Date().toISOString().split('T')[0]),
+              ward: adm.ward || 'General Ward',
+              roomNumber: adm.room_number || adm.roomNumber || '101',
+              bedNumber: adm.bed_number || adm.bedNumber || 'BED-101',
+              admittingDoctor: adm.attending_doctor_name || adm.doctor_name || adm.admitting_doctor || adm.admittingDoctor || 'Dr. Jeeva',
+              department: adm.department || 'General Medicine',
+              admissionDiagnosis: adm.admission_diagnosis || adm.diagnosis || adm.reason || 'Acute Observation',
+              admissionReason: adm.admission_reason || adm.reason || adm.admission_diagnosis || 'Acute Observation',
+              clinicalInfo: {
+                chiefComplaints: adm.chief_complaints || adm.reason || 'Fever and body pain for 3 days',
+                presentIllness: 'Patient developed fever with body ache. No history of rash.',
+                pastMedicalHistory: 'Hypertension',
+                surgicalHistory: 'None',
+                familyHistory: 'Non-contributory',
+                socialHistory: 'Non-smoker',
+                allergyInformation: 'NKDA (No Known Drug Allergies)',
+                currentMedications: 'Tab Amlodipine 5mg OD',
+              },
+              vitals: {
+                temperature: adm.temperature ?? 98.6,
+                systolicBP: 120,
+                diastolicBP: 80,
+                pulseRate: 72,
+                respiratoryRate: 16,
+                spo2: 98,
+                weight: 70,
+                height: 170,
+                bmi: 24.2,
+                lastRecordedTime: 'Today 08:00 AM',
+              },
+              dailyRounds: [
+                {
+                  id: `rd-1-${adm.id}`,
+                  roundDateTime: 'Today 09:30 AM',
+                  subjectiveNotes: 'Patient feels better today.',
+                  objectiveFindings: 'Vitals stable. Chest clear. Abdomen soft.',
+                  assessment: 'Improving under care.',
+                  plan: 'Continue supportive therapy.',
+                  progressNotes: 'Satisfactory.',
+                  nextReviewDate: 'Tomorrow 09:00 AM',
+                  doctorName: adm.attending_doctor_name || 'Dr. Jeeva',
+                },
+              ],
+              diagnosis: {
+                primaryDiagnosis: adm.admission_diagnosis || adm.diagnosis || 'Acute Observation',
+                primaryCode: 'R50.9',
+                secondaryDiagnosis: 'Essential Hypertension',
+                secondaryCode: 'I10',
+              },
+              orders: {
+                labTestOrders: ['Complete Blood Count (CBC)'],
+                radiologyOrders: ['Chest X-Ray'],
+                procedures: ['IV Fluids'],
+                nursingInstructions: 'Monitor vitals q4h.',
+                dietInstructions: 'Soft Diet',
+                physiotherapyOrders: 'As needed',
+              },
+              prescriptions: [
+                {
+                  id: `rx-1-${adm.id}`,
+                  medicineName: 'Inj. Pantoprazole 40mg',
+                  dosage: '1 Vial IV',
+                  frequency: 'Once Daily (OD)',
+                  route: 'IV Injection',
+                  duration: '3 Days',
+                  specialInstructions: 'Before breakfast',
+                },
+              ],
+              investigationResults: {
+                labReports: [
+                  {
+                    id: `lab-1-${adm.id}`,
+                    name: 'Complete Blood Count (CBC)',
+                    date: 'Today 08:30 AM',
+                    status: 'Normal',
+                    result: '13.5',
+                    unit: 'g/dL',
+                    normalRange: '12.0 - 15.5 g/dL',
+                  },
+                ],
+                radiologyReports: [
+                  {
+                    id: `rad-1-${adm.id}`,
+                    name: 'Chest X-Ray PA View',
+                    date: 'Today 09:00 AM',
+                    impression: 'Normal study',
+                    findings: 'Lung fields are clear. Heart size normal.',
+                  },
+                ],
+                attachedReports: [],
+              },
+              dischargeSummary: {
+                finalDiagnosis: adm.admission_diagnosis || 'Acute Observation',
+                treatmentGiven: 'Supportive Care & IV Fluids',
+                hospitalCourse: 'Responded well to treatment.',
+                conditionAtDischarge: 'Stable',
+                dischargeMedications: [
+                  {
+                    id: `dm-1-${adm.id}`,
+                    medicineName: 'Tab Paracetamol 650mg',
+                    dosage: '1 Tab SOS',
+                    frequency: 'As needed',
+                    duration: '3 Days',
+                  },
+                ],
+                followUpDate: 'In 7 Days',
+                dischargeAdvice: 'Rest and adequate fluid intake.',
+              },
+              statusInfo: {
+                admissionStatus: (adm.status as any) || 'Admitted',
+                bedStatus: 'Occupied',
+                lastUpdatedBy: adm.attending_doctor_name || 'Dr. Jeeva',
+                lastUpdatedTime: 'Just now',
+              },
+            }));
+            setPatients(mappedRecords);
           }
         }
       } catch (e) {
@@ -752,9 +889,9 @@ export const MedicalHistoryPage: React.FC = () => {
               />
             </div>
             <button
-              onClick={() => setSelectedDateFilter('2026-07-24')}
+              onClick={() => setSelectedDateFilter(new Date().toISOString().split('T')[0])}
               className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                selectedDateFilter === '2026-07-24'
+                selectedDateFilter === new Date().toISOString().split('T')[0]
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
               }`}
@@ -809,8 +946,8 @@ export const MedicalHistoryPage: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  filteredPatients.map((p) => (
-                    <tr key={p.patientId} className="hover:bg-blue-50/30 transition-colors">
+                  filteredPatients.map((p, idx) => (
+                    <tr key={`${p.patientId}-${p.ipNumber}-${idx}`} className="hover:bg-blue-50/30 transition-colors">
                       {/* IP Number & Bed */}
                       <td className="p-4">
                         <div className="font-bold text-indigo-700 text-xs">{p.ipNumber}</div>
@@ -1235,13 +1372,13 @@ export const MedicalHistoryPage: React.FC = () => {
               {!isEditingVitals ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
                   {[
+                    { label: 'Height', val: `${patient.vitals.height} cm`, color: 'text-slate-700 bg-slate-50 border-slate-200' },
+                    { label: 'Weight', val: `${patient.vitals.weight} kg`, color: 'text-slate-700 bg-slate-50 border-slate-200' },
                     { label: 'Temp', val: `${patient.vitals.temperature} °F`, color: 'text-amber-700 bg-amber-50 border-amber-200' },
                     { label: 'BP', val: `${patient.vitals.systolicBP}/${patient.vitals.diastolicBP}`, color: 'text-blue-700 bg-blue-50 border-blue-200' },
                     { label: 'Pulse', val: `${patient.vitals.pulseRate} bpm`, color: 'text-emerald-700 bg-emerald-50 border-emerald-200' },
                     { label: 'Resp Rate', val: `${patient.vitals.respiratoryRate} /min`, color: 'text-teal-700 bg-teal-50 border-teal-200' },
                     { label: 'SpO₂', val: `${patient.vitals.spo2} %`, color: 'text-indigo-700 bg-indigo-50 border-indigo-200' },
-                    { label: 'Weight', val: `${patient.vitals.weight} kg`, color: 'text-slate-700 bg-slate-50 border-slate-200' },
-                    { label: 'Height', val: `${patient.vitals.height} cm`, color: 'text-slate-700 bg-slate-50 border-slate-200' },
                     { label: 'BMI', val: `${patient.vitals.bmi} kg/m²`, color: 'text-blue-800 bg-blue-100 border-blue-300' },
                   ].map((v, i) => (
                     <div key={i} className={`p-4 rounded-xl border ${v.color}`}>
@@ -1595,7 +1732,7 @@ export const MedicalHistoryPage: React.FC = () => {
                           className="w-full appearance-none bg-slate-50 border border-purple-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20 pr-8 cursor-pointer"
                         >
                           <option value="">Select lab test...</option>
-                          {LAB_TEST_OPTIONS.map((testName, i) => (
+                          {dynamicLabTestOptions.map((testName, i) => (
                             <option key={i} value={testName}>
                               {testName}
                             </option>
@@ -1782,8 +1919,8 @@ export const MedicalHistoryPage: React.FC = () => {
                     <FlaskConical className="w-4 h-4 text-purple-600" /> Lab Test Results
                   </h4>
                   <div className="space-y-2">
-                    {patient.investigationResults.labReports.map((r) => (
-                      <div key={r.id} className="p-3.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between text-xs">
+                    {(patient?.investigationResults?.labReports || []).map((r, idx) => (
+                      <div key={`${r.id}-${idx}`} className="p-3.5 rounded-xl border border-slate-200 bg-white flex items-center justify-between text-xs">
                         <div>
                           <p className="font-bold text-slate-900">{r.name}</p>
                           <p className="text-[10px] text-slate-400">{r.date} • Normal: {r.normalRange}</p>
@@ -1809,8 +1946,8 @@ export const MedicalHistoryPage: React.FC = () => {
                     <Scan className="w-4 h-4 text-indigo-600" /> Radiology Reports
                   </h4>
                   <div className="space-y-2">
-                    {patient.investigationResults.radiologyReports.map((r) => (
-                      <div key={r.id} className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-1 text-xs">
+                    {(patient?.investigationResults?.radiologyReports || []).map((r, idx) => (
+                      <div key={`${r.id}-${idx}`} className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-1 text-xs">
                         <div className="flex items-center justify-between">
                           <p className="font-bold text-slate-900">{r.name}</p>
                           <span className="text-[10px] text-slate-400">{r.date}</span>
@@ -1824,12 +1961,12 @@ export const MedicalHistoryPage: React.FC = () => {
               </div>
 
               {/* Attachments */}
-              {patient.investigationResults.attachedReports.length > 0 && (
+              {(patient?.investigationResults?.attachedReports || []).length > 0 && (
                 <div className="pt-4 border-t border-slate-100 space-y-2">
                   <h4 className="text-xs font-bold text-slate-700">Attached Documents</h4>
                   <div className="flex flex-wrap gap-3">
-                    {patient.investigationResults.attachedReports.map((ar) => (
-                      <div key={ar.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-xs">
+                    {(patient?.investigationResults?.attachedReports || []).map((ar, idx) => (
+                      <div key={`${ar.id}-${idx}`} className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center gap-3 text-xs">
                         <FileText className="w-4 h-4 text-blue-600" />
                         <div>
                           <p className="font-bold text-slate-900">{ar.fileName}</p>

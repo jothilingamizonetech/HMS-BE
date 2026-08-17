@@ -13,13 +13,14 @@ import {
   Trash2,
 } from 'lucide-react';
 import { StockOutward } from '../../types/store';
-import { fetchStockOutwardApi, createStockOutwardApi } from '../../services/api';
+import { fetchStockOutwardApi, createStockOutwardApi, fetchStockInwardApi, createStockTransferApi } from '../../services/api';
 import { useHMS } from '../../context/HMSContext';
 import { Modal } from '../../components/common/Modal';
 
 export const StockOutwardPage: React.FC = () => {
-  const { addToast, storeItems } = useHMS();
+  const { addToast, storeItems, updateStoreItem, refreshData } = useHMS();
   const [outwardList, setOutwardList] = useState<StockOutward[]>([]);
+  const [inwardList, setInwardList] = useState<any[]>([]);
 
   const loadOutwardList = async () => {
     try {
@@ -45,7 +46,52 @@ export const StockOutwardPage: React.FC = () => {
 
   useEffect(() => {
     loadOutwardList();
+    fetchStockInwardApi()
+      .then((data) => {
+        if (Array.isArray(data)) setInwardList(data);
+      })
+      .catch(() => {});
   }, []);
+
+  const availableProducts = useMemo(() => {
+    const list: { itemCode: string; itemName: string; batchNumber: string; currentStock: number }[] = [];
+    const seen = new Set<string>();
+
+    storeItems.forEach((i) => {
+      const codeKey = (i.itemCode || '').toLowerCase().trim();
+      const matchedInward = inwardList.find(
+        (inw) => (inw.item_code || inw.itemCode || '').toLowerCase().trim() === codeKey
+      );
+      const batch = matchedInward?.batch_number || matchedInward?.batchNumber || 'BAT-2026-X1';
+
+      if (codeKey) seen.add(codeKey);
+      list.push({
+        itemCode: i.itemCode,
+        itemName: i.itemName,
+        batchNumber: batch,
+        currentStock: Math.max(0, i.currentStock ?? 0),
+      });
+    });
+
+    inwardList.forEach((inw) => {
+      const code = inw.item_code || inw.itemCode || 'MED-001';
+      const name = inw.item_name || inw.itemName || 'Product';
+      const batch = inw.batch_number || inw.batchNumber || 'BAT-2026-X1';
+      const codeKey = code.toLowerCase().trim();
+
+      if (!seen.has(codeKey)) {
+        seen.add(codeKey);
+        list.push({
+          itemCode: code,
+          itemName: name,
+          batchNumber: batch,
+          currentStock: Number(inw.quantity || 0),
+        });
+      }
+    });
+
+    return list;
+  }, [inwardList, storeItems]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -55,14 +101,16 @@ export const StockOutwardPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<StockOutward | null>(null);
 
+  const firstItem = availableProducts[0] || { itemCode: 'MED-001', itemName: 'Paracetamol 500mg', batchNumber: 'BAT-2026-X1' };
+
   const initialForm: Omit<StockOutward, 'id'> = {
     outwardNumber: `OUT-2026-${String(outwardList.length + 1).padStart(3, '0')}`,
     date: new Date().toISOString().split('T')[0],
-    department: 'ICU Ward 3',
+    department: 'Pharmacy',
     receivedBy: 'Nurse Anita Sharma',
-    itemCode: storeItems[0]?.itemCode || 'MED-001',
-    itemName: storeItems[0]?.itemName || 'Paracetamol 500mg',
-    batchNumber: 'BAT-2026-X1',
+    itemCode: firstItem.itemCode,
+    itemName: firstItem.itemName,
+    batchNumber: firstItem.batchNumber,
     quantity: 20,
     reason: 'Routine Consumption',
   };
@@ -71,11 +119,14 @@ export const StockOutwardPage: React.FC = () => {
 
   const handleOpenCreate = () => {
     setSelectedEntry(null);
+    const topProd = availableProducts[0] || firstItem;
     setFormData({
       ...initialForm,
       outwardNumber: `OUT-2026-${String(outwardList.length + 1).padStart(3, '0')}`,
-      itemCode: storeItems[0]?.itemCode || 'MED-001',
-      itemName: storeItems[0]?.itemName || 'Paracetamol 500mg',
+      department: 'Pharmacy',
+      itemCode: topProd.itemCode,
+      itemName: topProd.itemName,
+      batchNumber: topProd.batchNumber,
     });
     setIsModalOpen(true);
   };
@@ -101,18 +152,32 @@ export const StockOutwardPage: React.FC = () => {
   };
 
   const handleItemSelect = (itemCode: string) => {
-    const matched = storeItems.find((i) => i.itemCode === itemCode);
+    const matched = availableProducts.find((i) => i.itemCode === itemCode);
     if (matched) {
       setFormData({
         ...formData,
         itemCode: matched.itemCode,
         itemName: matched.itemName,
+        batchNumber: matched.batchNumber || formData.batchNumber,
       });
     }
   };
 
   const handleSaveOutward = async (e: React.FormEvent) => {
     e.preventDefault();
+    const currentProd = availableProducts.find((i) => i.itemCode === formData.itemCode);
+    const availableQty = currentProd?.currentStock ?? 0;
+
+    if (availableQty <= 0) {
+      addToast('error', 'Item Out of Stock', `Selected item (${formData.itemName}) is currently out of stock (0 available). Cannot issue stock.`);
+      return;
+    }
+
+    if (formData.quantity > availableQty) {
+      addToast('error', 'Stock Exceeded', `Cannot issue ${formData.quantity} units. Only ${availableQty} units available in stock.`);
+      return;
+    }
+
     try {
       const created = await createStockOutwardApi(formData);
       const mapped: StockOutward = {
@@ -129,7 +194,42 @@ export const StockOutwardPage: React.FC = () => {
         issuedBy: created.issued_by || created.issuedBy || 'Store Manager',
       };
       setOutwardList((prev) => [mapped, ...prev]);
-      addToast('success', 'Stock Issued (API)', `Issued ${formData.quantity} units to ${formData.department} in database.`);
+
+      // Deduct quantity from Item Master currentStock in HMSContext
+      const matchedItem = storeItems.find(
+        (i) => i.itemCode === formData.itemCode || i.itemName.toLowerCase() === formData.itemName.toLowerCase()
+      );
+      if (matchedItem) {
+        const newStock = Math.max(0, (matchedItem.currentStock || 0) - Number(formData.quantity || 0));
+        try {
+          updateStoreItem(matchedItem.id, { currentStock: newStock });
+        } catch (e) {
+          console.warn('Error updating store item stock in context:', e);
+        }
+      }
+
+      if (formData.department.toLowerCase().includes('pharmacy')) {
+        try {
+          await createStockTransferApi({
+            transferNumber: `TRF-OUT-${Date.now()}`,
+            source: 'Central Store Bay 1',
+            destination: 'Pharmacy Store',
+            itemCode: formData.itemCode,
+            itemName: formData.itemName,
+            quantity: formData.quantity,
+            date: formData.date,
+            status: 'Completed',
+          });
+        } catch (e) {
+          console.warn('Auto stock transfer creation warning:', e);
+        }
+      }
+
+      if (typeof refreshData === 'function') {
+        refreshData();
+      }
+
+      addToast('success', 'Stock Issued & Item Master Updated', `Issued ${formData.quantity} units of ${formData.itemName}.`);
     } catch (err: any) {
       console.warn('API error logging stock outward:', err);
       addToast('error', 'Save Failed', err.message || 'Could not save stock outward to database.');
@@ -344,12 +444,22 @@ export const StockOutwardPage: React.FC = () => {
                 onChange={(e) => handleItemSelect(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
               >
-                {storeItems.map((i) => (
-                  <option key={i.id} value={i.itemCode}>
-                    {i.itemName} ({i.itemCode}) - Avail: {i.currentStock}
+                {availableProducts.map((i, idx) => (
+                  <option key={`${i.itemCode}-${idx}`} value={i.itemCode}>
+                    {i.itemName} ({i.itemCode}) — Batch: {i.batchNumber} | Available: {i.currentStock} units {i.currentStock <= 0 ? '(OUT OF STOCK)' : ''}
                   </option>
                 ))}
               </select>
+              {(() => {
+                const currentProd = availableProducts.find((i) => i.itemCode === formData.itemCode);
+                const stock = currentProd?.currentStock ?? 0;
+                return (
+                  <p className={`text-[11px] font-bold mt-1.5 flex items-center justify-between ${stock > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    <span>Available Stock Quantity:</span>
+                    <span className="font-black text-xs bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">{stock} units</span>
+                  </p>
+                );
+              })()}
             </div>
 
             <div>
@@ -357,11 +467,22 @@ export const StockOutwardPage: React.FC = () => {
               <input
                 type="number"
                 min={1}
+                max={Math.max(1, availableProducts.find((i) => i.itemCode === formData.itemCode)?.currentStock ?? 1)}
                 required
                 value={formData.quantity}
                 onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
               />
+              {(() => {
+                const currentProd = availableProducts.find((i) => i.itemCode === formData.itemCode);
+                const stock = currentProd?.currentStock ?? 0;
+                const isExceeded = formData.quantity > stock;
+                return isExceeded ? (
+                  <p className="text-[11px] font-bold text-rose-600 mt-1">
+                    ⚠️ Quantity ({formData.quantity}) exceeds available stock ({stock} units). Only up to {stock} units can be issued.
+                  </p>
+                ) : null;
+              })()}
             </div>
 
             <div>
@@ -397,7 +518,12 @@ export const StockOutwardPage: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-600/20 cursor-pointer"
+              disabled={(() => {
+                const currentProd = availableProducts.find((i) => i.itemCode === formData.itemCode);
+                const stock = currentProd?.currentStock ?? 0;
+                return stock <= 0 || formData.quantity > stock;
+              })()}
+              className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold shadow-md shadow-blue-600/20 cursor-pointer"
             >
               {selectedEntry ? 'Update Stock Issuance' : 'Issue Stock Now'}
             </button>

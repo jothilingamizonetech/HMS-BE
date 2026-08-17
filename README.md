@@ -43,20 +43,23 @@ Designed for multi-branch hospital operations, featuring comprehensive workflows
 ```
 hms/
 ├── backend/                  # FastAPI Python Backend
-│   ├── alembic/              # Database migration scripts
-│   ├── app/                  # Application core, models, routers, schemas, seeders
+│   ├── alembic/              # Alembic database migration revisions & config
+│   ├── app/                  # Application core, models, routers, schemas, services
 │   ├── alembic.ini           # Alembic settings
+│   ├── Dockerfile            # Container build specification
 │   └── requirements.txt      # Python dependencies
 │
-├── frontend/                 # React + TypeScript Frontend
+├── frontend/                 # React + TypeScript + Vite Frontend
 │   ├── src/
-│   │   ├── components/       # Shared UI components (Navigation, Modals, Tables)
-│   │   ├── context/          # AuthContext & BranchContext state providers
-│   │   ├── pages/            # Feature pages (Admin, Clinical, IPD, Lab, Pharmacy, Reception, Store)
-│   │   ├── services/         # Axios API services
-│   │   └── types/            # TypeScript type definitions (`hms.ts`)
-│   └── package.json          # Frontend packages & scripts
+│   │   ├── components/       # Shared UI components (Common, Dashboard, Nurse)
+│   │   ├── context/          # React Context providers (Auth, HMS, Lab, Nurse, Pharmacy, SuperAdmin)
+│   │   ├── pages/            # Feature pages (Auth, Common, Doctor, Lab, Landing, Nurse, Patient, Pharmacy, Reception, Store, SuperAdmin)
+│   │   ├── services/         # Axios API service client
+│   │   ├── types/            # TypeScript type definitions (hms, nurse, store, superAdmin)
+│   │   └── utils/            # Utility helpers & formatters
+│   └── package.json          # Frontend dependencies & npm scripts
 │
+├── CHANGELOG.md              # Project revision history
 ├── PROJECT_STRUCTURE.md      # Detailed directory architecture documentation
 ├── README.md                 # Root documentation (this file)
 └── .gitignore                # Workspace git ignore rules

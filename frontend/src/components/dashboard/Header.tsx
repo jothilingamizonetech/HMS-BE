@@ -12,6 +12,8 @@ import {
   CheckCircle,
   X,
   ExternalLink,
+  Calendar,
+  CalendarPlus,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -20,7 +22,7 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ setMobileSidebarOpen }) => {
   const { user, logout } = useAuth();
-  const { patients, notifications, markNotificationRead } = useHMS();
+  const { patients, notifications, markNotificationRead, markAllNotificationsRead } = useHMS();
   const navigate = useNavigate();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -145,33 +147,117 @@ export const Header: React.FC<HeaderProps> = ({ setMobileSidebarOpen }) => {
 
           {/* Notifications Panel */}
           {showNotifications && (
-            <div className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 py-3 z-50">
-              <div className="px-4 pb-2 border-b border-slate-100 flex items-center justify-between">
+            <div className="absolute right-0 mt-2 w-88 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden z-50">
+              <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <h4 className="text-xs font-bold text-slate-900">Hospital Alerts</h4>
-                <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                  {unreadCount} new
-                </span>
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={() => markAllNotificationsRead()}
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  <span className="text-[10px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
+                    {unreadCount} new
+                  </span>
+                </div>
               </div>
-              <div className="max-h-64 overflow-y-auto divide-y divide-slate-100">
-                {notifications.map((n) => (
-                  <div
-                    key={n.id}
-                    onClick={() => markNotificationRead(n.id)}
-                    className={`p-3 text-xs hover:bg-slate-50 transition-colors cursor-pointer ${!n.read ? 'bg-blue-50/30 font-medium' : 'opacity-80'
-                      }`}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-900">{n.title}</span>
-                      <span className="text-[10px] text-slate-400">{n.time}</span>
+
+              {(() => {
+                const followUpNotifs = notifications.filter(
+                  (n) => n.eventType === 'follow_up_assigned' || (n.title && n.title.toLowerCase().includes('follow-up'))
+                );
+                const regularNotifs = notifications.filter(
+                  (n) => !(n.eventType === 'follow_up_assigned' || (n.title && n.title.toLowerCase().includes('follow-up')))
+                );
+
+                return (
+                  <div className="max-h-80 overflow-y-auto">
+                    {/* Top Highlighted Section: Doctor Assigned Follow-Up Dates */}
+                    {followUpNotifs.length > 0 && (
+                      <div className="bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white p-3 space-y-2 border-b border-indigo-700">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-cyan-300 flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-cyan-400" />
+                            Doctor Follow-up Dates ({followUpNotifs.length})
+                          </span>
+                          <span className="text-[9px] bg-cyan-400/20 text-cyan-200 px-1.5 py-0.5 rounded font-bold border border-cyan-400/30">
+                            Reception Priority
+                          </span>
+                        </div>
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                          {followUpNotifs.map((n) => (
+                            <div
+                              key={n.id}
+                              onClick={() => markNotificationRead(n.id)}
+                              className={`p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                                !n.read
+                                  ? 'bg-white/15 border-cyan-400/40 shadow-xs'
+                                  : 'bg-white/5 border-white/10 opacity-75'
+                              }`}
+                            >
+                              <div className="flex items-center justify-between font-bold text-white text-xs">
+                                <span className="text-cyan-300 font-extrabold">{n.title}</span>
+                                <span className="text-[10px] text-slate-300">{n.time}</span>
+                              </div>
+                              <p className="text-[11px] text-slate-200 mt-1 leading-snug">{n.message}</p>
+                              {n.relatedRecordId && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowNotifications(false);
+                                    navigate(`/reception/appointment/book?uhid=${encodeURIComponent(n.relatedRecordId || '')}`);
+                                  }}
+                                  className="mt-2 text-[10px] font-bold text-cyan-900 bg-cyan-300 hover:bg-cyan-200 px-2.5 py-1 rounded-lg inline-flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                                >
+                                  <CalendarPlus className="w-3 h-3" /> Book Follow-Up Appointment
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Standard Alerts List */}
+                    <div className="divide-y divide-slate-100">
+                      {regularNotifs.map((n) => (
+                        <div
+                          key={n.id}
+                          onClick={() => markNotificationRead(n.id)}
+                          className={`p-3 text-xs hover:bg-slate-50 transition-colors cursor-pointer ${
+                            !n.read ? 'bg-blue-50/30 font-medium' : 'opacity-80'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-slate-900">{n.title}</span>
+                            <span className="text-[10px] text-slate-400">{n.time}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-600 mt-1">{n.message}</p>
+                        </div>
+                      ))}
+                      {notifications.length === 0 && (
+                        <div className="p-4 text-center text-xs text-slate-400">No notifications available.</div>
+                      )}
                     </div>
-                    <p className="text-[11px] text-slate-600 mt-1">{n.message}</p>
                   </div>
-                ))}
-              </div>
-              <div className="pt-2 px-3 border-t border-slate-100 text-center">
+                );
+              })()}
+
+              <div className="p-2.5 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                {unreadCount > 0 ? (
+                  <button
+                    onClick={() => markAllNotificationsRead()}
+                    className="text-[11px] text-blue-600 font-semibold hover:underline cursor-pointer"
+                  >
+                    Mark all as read
+                  </button>
+                ) : <span />}
                 <button
                   onClick={() => setShowNotifications(false)}
-                  className="text-[11px] text-blue-600 font-semibold hover:underline"
+                  className="text-[11px] text-slate-500 font-semibold hover:text-slate-700 cursor-pointer"
                 >
                   Close Alerts
                 </button>

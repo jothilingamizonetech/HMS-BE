@@ -26,9 +26,9 @@ export const BookAppointmentPage: React.FC = () => {
   const [selectedUhid, setSelectedUhid] = useState(searchParams.get('uhid') || '');
   const [selectedDept, setSelectedDept] = useState('');
   const [selectedDoctorId, setSelectedDoctorId] = useState('');
-  const [aptDate, setAptDate] = useState(getCurrentDateFormatted());
+  const [aptDate, setAptDate] = useState(searchParams.get('date') || getCurrentDateFormatted());
   const [selectedSlot, setSelectedSlot] = useState('');
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState(searchParams.get('reason') || (searchParams.get('date') ? 'Doctor Assigned Follow-Up Visit' : ''));
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   // Fetch branches from API or merge with defaults
@@ -97,10 +97,15 @@ export const BookAppointmentPage: React.FC = () => {
   const pendingRequests = appointments.filter((a) => {
     const st = (a.status || '').toString().toLowerCase();
     const isPending = st === 'requested' || st === 'pending';
+    if (!isPending) return false;
+
+    const source = ((a as any).bookingSource || (a as any).source || '').toString().toLowerCase();
+    if (source === 'direct' || source === 'reception') return false;
+
     const br = (a.branch || '').toLowerCase().trim();
     const selBr = (selectedBranch || '').toLowerCase().trim();
     const matchBranch = !selectedBranch || selectedBranch === 'All' || !br || br === 'main branch' || br.includes(selBr) || selBr.includes(br);
-    return isPending && matchBranch;
+    return matchBranch;
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -121,7 +126,9 @@ export const BookAppointmentPage: React.FC = () => {
       timeSlot: selectedSlot || '10:00 AM',
       reason,
       branch: selectedBranch || selectedDoctorObj.branch || userBranch,
-    });
+      status: 'Scheduled',
+      bookingSource: 'Direct',
+    } as any);
 
     navigate('/reception/appointment/queue');
   };
@@ -197,11 +204,10 @@ export const BookAppointmentPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('book')}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer inline-flex items-center gap-2 ${
-            activeTab === 'book'
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer inline-flex items-center gap-2 ${activeTab === 'book'
               ? 'border-blue-600 text-blue-700 bg-blue-50/40 rounded-t-xl'
               : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+            }`}
         >
           <CalendarPlus className="w-4 h-4" />
           <span>Direct OPD Appointment Booking</span>
@@ -210,11 +216,10 @@ export const BookAppointmentPage: React.FC = () => {
         <button
           type="button"
           onClick={() => setActiveTab('requests')}
-          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer inline-flex items-center gap-2 ${
-            activeTab === 'requests'
+          className={`px-5 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer inline-flex items-center gap-2 ${activeTab === 'requests'
               ? 'border-indigo-600 text-indigo-700 bg-indigo-50/40 rounded-t-xl'
               : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
+            }`}
         >
           <Inbox className="w-4 h-4" />
           <span>Pending Online Requests</span>
@@ -333,11 +338,10 @@ export const BookAppointmentPage: React.FC = () => {
                     key={slot}
                     type="button"
                     onClick={() => setSelectedSlot(slot)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                      selectedSlot === slot
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedSlot === slot
                         ? 'bg-blue-600 text-white shadow-sm'
                         : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                    }`}
+                      }`}
                   >
                     {slot}
                   </button>
@@ -376,11 +380,10 @@ export const BookAppointmentPage: React.FC = () => {
             <button
               type="submit"
               disabled={!selectedDoctorObj}
-              className={`inline-flex items-center gap-2 px-8 py-2.5 rounded-xl font-bold text-xs text-white transition-all ${
-                selectedDoctorObj
+              className={`inline-flex items-center gap-2 px-8 py-2.5 rounded-xl font-bold text-xs text-white transition-all ${selectedDoctorObj
                   ? 'bg-blue-600 hover:bg-blue-700 shadow-md cursor-pointer'
                   : 'bg-slate-300 cursor-not-allowed opacity-70'
-              }`}
+                }`}
             >
               <CalendarPlus className="w-4 h-4" />
               <span>Confirm Appointment ({selectedBranch})</span>

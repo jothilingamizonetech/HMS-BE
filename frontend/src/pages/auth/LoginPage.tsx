@@ -132,34 +132,44 @@ export const LoginPage: React.FC = () => {
               <div className="py-4 text-center text-xs text-slate-400">Loading DB credentials...</div>
             ) : dbUsers.length > 0 ? (
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {dbUsers.slice(0, 6).map((u) => (
-                  <div
-                    key={u.id || u.email}
-                    onClick={() => {
-                      setEmail(u.email);
-                      setPassword('admin123');
-                    }}
-                    className="p-2.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 transition-all cursor-pointer flex items-center justify-between group"
-                  >
-                    <div className="min-w-0 pr-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white truncate">{u.name}</span>
-                        <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-500/30 text-cyan-300 border border-blue-400/20">
-                          {u.role}
+                {dbUsers.slice(0, 8).map((u) => {
+                  const roleStr = String(u.role || '').toLowerCase();
+                  const suggestedPw =
+                    u.email === 'admin@hms.com' || roleStr === 'admin' || roleStr === 'super_admin'
+                      ? 'admin123'
+                      : roleStr === 'nurse'
+                      ? 'nurse123'
+                      : 'ChangeMe@123';
+
+                  return (
+                    <div
+                      key={u.id || u.email}
+                      onClick={() => {
+                        setEmail(u.email);
+                        setPassword(suggestedPw);
+                      }}
+                      className="p-2.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 transition-all cursor-pointer flex items-center justify-between group"
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-white truncate">{u.name}</span>
+                          <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-500/30 text-cyan-300 border border-blue-400/20">
+                            {u.role}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-300 truncate mt-0.5">{u.email}</p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/60 block">
+                          {u.branch || 'Main Branch'}
+                        </span>
+                        <span className="text-[9px] font-mono text-cyan-300 group-hover:text-cyan-200 transition-colors block mt-0.5">
+                          pw: {suggestedPw}
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-300 truncate mt-0.5">{u.email}</p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <span className="text-[10px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/60 block">
-                        {u.branch || 'Main Branch'}
-                      </span>
-                      <span className="text-[9px] text-slate-400 group-hover:text-cyan-300 transition-colors block mt-0.5">
-                        Click to select
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="py-3 text-center text-xs text-slate-300">

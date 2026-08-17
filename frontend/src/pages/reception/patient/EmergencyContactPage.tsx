@@ -47,6 +47,10 @@ export const EmergencyContactPage: React.FC = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.phone && formData.phone.replace(/\D/g, '').length !== 10) {
+      alert('Phone number must be exactly 10 digits.');
+      return;
+    }
     if (editingContact) {
       updateEmergencyContact(editingContact.id, formData);
     } else {
@@ -198,13 +202,14 @@ export const EmergencyContactPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Phone Number *</label>
+                <label className="block font-semibold text-slate-700 mb-1">Phone Number (10 digits) *</label>
                 <input
                   type="tel"
                   required
+                  maxLength={10}
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+91 98765 43212"
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                  placeholder="10-digit phone number"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 outline-none focus:bg-white"
                 />
               </div>

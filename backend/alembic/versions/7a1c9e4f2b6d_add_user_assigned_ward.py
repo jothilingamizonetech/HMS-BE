@@ -15,19 +15,23 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Nullable by design: an unassigned nurse is treated as "don't scope" by
-    # get_own_nurse_ward() (see deps.py), so existing rows don't need a
-    # backfill value to remain correct — this is the key difference from a
-    # hypothetical Bed.department column, which had no defensible backfill
-    # source at all (see CHANGELOG.md Phase 12/13).
-    #
-    # Using a raw ALTER TABLE with IF NOT EXISTS so the migration is idempotent
-    # (safe to re-run against a database that somehow already has the column,
-    # e.g. from a manual patch). This is more reliable than the batch_alter_table
-    # SQLite workaround used in earlier migrations in this project.
-    op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_ward VARCHAR(100)")
+    conn = op.get_bind()
+    if conn.dialect.name == 'sqlite':
+        insp = sa.inspect(conn)
+        columns = [c['name'] for c in insp.get_columns('users')]
+        if 'assigned_ward' not in columns:
+            op.execute("ALTER TABLE users ADD COLUMN assigned_ward VARCHAR(100)")
+    else:
+        try:
+            with conn.begin_nested():
+                op.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_ward VARCHAR(100)")
+        except Exception:
+            pass
 
 
 def downgrade() -> None:
-    op.drop_column('users', 'assigned_ward')
+    conn = op.get_bind()
+    if conn.dialect.name != 'sqlite':
+        op.drop_column('users', 'assigned_ward')
+
 

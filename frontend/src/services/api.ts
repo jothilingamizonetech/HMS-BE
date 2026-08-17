@@ -599,6 +599,7 @@ export async function fetchBedsApi(branch?: string): Promise<Bed[]> {
     currentPatientUhid: b.current_patient_uhid,
     currentPatientName: b.current_patient_name,
     admittedDate: b.admitted_date,
+    branch: b.branch,
   }));
 }
 
@@ -620,6 +621,7 @@ export async function fetchIpdAdmissionsApi(branch?: string): Promise<IPDAdmissi
     insuranceProvider: a.insurance_provider,
     insuranceNumber: a.insurance_number,
     status: a.status,
+    branch: a.branch,
   }));
 }
 
@@ -750,7 +752,57 @@ export async function fetchNotificationsApi(): Promise<Notification[]> {
     time: n.time,
     type: n.type,
     read: n.read,
+    module: n.module,
+    eventType: n.event_type || n.eventType,
+    senderName: n.sender_name || n.senderName,
+    recipientRole: n.recipient_role || n.recipientRole,
+    relatedRecordId: n.related_record_id || n.relatedRecordId,
+    priority: n.priority,
+    status: n.status,
   }));
+}
+
+export async function createNotificationApi(payload: {
+  title: string;
+  message: string;
+  type?: 'info' | 'warning' | 'success';
+  module?: string;
+  eventType?: string;
+  senderName?: string;
+  recipientRole?: string;
+  relatedRecordId?: string;
+  priority?: string;
+}): Promise<Notification> {
+  const body = {
+    title: payload.title,
+    message: payload.message,
+    type: payload.type || 'info',
+    module: payload.module || 'Consultation',
+    event_type: payload.eventType || 'follow_up_assigned',
+    sender_name: payload.senderName,
+    recipient_role: payload.recipientRole || 'reception',
+    related_record_id: payload.relatedRecordId,
+    priority: payload.priority || 'high',
+  };
+  const item = await apiRequest<any>('/notifications', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return {
+    id: item.id,
+    title: item.title,
+    message: item.message,
+    time: item.time,
+    type: item.type,
+    read: item.read,
+    module: item.module,
+    eventType: item.event_type || item.eventType,
+    senderName: item.sender_name || item.senderName,
+    recipientRole: item.recipient_role || item.recipientRole,
+    relatedRecordId: item.related_record_id || item.relatedRecordId,
+    priority: item.priority,
+    status: item.status,
+  };
 }
 
 export async function markNotificationReadApi(id: string): Promise<void> {
@@ -777,6 +829,9 @@ export async function createStoreItemApi(item: any): Promise<any> {
     item_name: item.itemName || item.item_name,
     category: item.category,
     sub_category: item.subCategory || item.sub_category,
+    generic_composition: item.genericComposition || item.generic_composition || '',
+    strength: item.strength || '',
+    dosage_form: item.dosageForm || item.dosage_form || 'Tablet',
     unit: item.unit,
     pack_quantity: item.packQuantity ?? item.pack_quantity ?? 1,
     issue_unit: item.issueUnit || item.issue_unit || 'Piece',
@@ -804,6 +859,9 @@ export async function updateStoreItemApi(id: string, item: any): Promise<any> {
     item_name: item.itemName || item.item_name,
     category: item.category,
     sub_category: item.subCategory || item.sub_category,
+    generic_composition: item.genericComposition ?? item.generic_composition,
+    strength: item.strength,
+    dosage_form: item.dosageForm ?? item.dosage_form,
     unit: item.unit,
     pack_quantity: item.packQuantity ?? item.pack_quantity,
     issue_unit: item.issueUnit || item.issue_unit,
@@ -995,14 +1053,44 @@ export async function createStockInwardApi(inward: any): Promise<any> {
   });
 }
 
+export async function updateStockInwardApi(id: string, inward: any): Promise<any> {
+  const payload: Record<string, any> = {};
+  if (inward.poNumber !== undefined || inward.po_number !== undefined) payload.po_number = inward.poNumber ?? inward.po_number;
+  if (inward.itemId !== undefined || inward.item_id !== undefined) payload.item_id = inward.itemId ?? inward.item_id;
+  if (inward.itemCode !== undefined || inward.item_code !== undefined) payload.item_code = inward.itemCode ?? inward.item_code;
+  if (inward.itemName !== undefined || inward.item_name !== undefined) payload.item_name = inward.itemName ?? inward.item_name;
+  if (inward.quantity !== undefined) payload.quantity = Number(inward.quantity);
+  if (inward.unitPrice !== undefined || inward.unit_price !== undefined) payload.unit_price = Number(inward.unitPrice ?? inward.unit_price);
+  if (inward.batchNumber !== undefined || inward.batch_number !== undefined) payload.batch_number = inward.batchNumber ?? inward.batch_number;
+  if (inward.expiryDate !== undefined || inward.expiry_date !== undefined) payload.expiry_date = inward.expiryDate ?? inward.expiry_date;
+  if (inward.supplier !== undefined || inward.supplier_name !== undefined) payload.supplier = inward.supplier ?? inward.supplier_name;
+  if (inward.warehouse !== undefined) payload.warehouse = inward.warehouse;
+  if (inward.receivedBy !== undefined || inward.received_by !== undefined) payload.received_by = inward.receivedBy ?? inward.received_by;
+  if (inward.date !== undefined) payload.date = inward.date;
+
+  return apiRequest(`/store/stock-inward/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteStockInwardApi(id: string): Promise<void> {
+  return apiRequest(`/store/stock-inward/${id}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function fetchStockOutwardApi(branch?: string): Promise<any[]> {
   const url = branch ? `/store/stock-outward?branch=${encodeURIComponent(branch)}` : '/store/stock-outward';
   return apiRequest<any[]>(url);
 }
 
 export async function createStockOutwardApi(outward: any): Promise<any> {
+  const dept = outward.department || outward.issued_to_department || outward.issuedToDepartment || 'Pharmacy';
   const payload = {
-    department: outward.department || outward.issued_to_department || 'General Ward',
+    department: dept,
+    issued_to_department: dept,
+    issued_to_person: outward.receivedBy || outward.issued_to_person || outward.issuedToPerson || 'Store Recipient',
     ward: outward.ward,
     lab: outward.lab,
     pharmacy: outward.pharmacy,
@@ -1114,6 +1202,10 @@ export async function deleteStockAdjustmentApi(id: string): Promise<void> {
   return apiRequest(`/store/stock-adjustment/${id}`, {
     method: 'DELETE',
   });
+}
+
+export async function fetchReorderManagementApi(): Promise<any[]> {
+  return apiRequest<any[]>('/store/reorder-management');
 }
 
 export async function fetchBatchesApi(): Promise<any[]> {
@@ -1875,6 +1967,24 @@ export async function createCategoryApi(payload: any): Promise<any> {
   });
 }
 
+// --- Pharmacy Reports & Analytics ---
+export async function fetchPharmacyReportsApi(branch?: string): Promise<any> {
+  const url = branch ? `/pharmacy/reports?branch=${encodeURIComponent(branch)}` : '/pharmacy/reports';
+  return apiRequest<any>(url);
+}
+
+// --- Store -> Pharmacy Transfers ---
+export async function fetchPharmacyTransfersApi(branch?: string): Promise<any> {
+  const url = branch ? `/store/pharmacy-transfers?branch=${encodeURIComponent(branch)}` : '/store/pharmacy-transfers';
+  return apiRequest<any>(url);
+}
+
+export async function approvePharmacyTransferApi(transferId: string): Promise<any> {
+  return apiRequest(`/store/pharmacy-transfers/${transferId}/approve`, {
+    method: 'POST',
+  });
+}
+
 // --- Pharmacy Medicines ---
 export async function fetchMedicinesApi(branch?: string): Promise<any[]> {
   const url = branch ? `/pharmacy/medicines?branch=${encodeURIComponent(branch)}` : '/pharmacy/medicines';
@@ -1957,6 +2067,12 @@ export async function createSupplierReturnApi(payload: any): Promise<any> {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+// --- Staff & Nurses ---
+export async function fetchNursesApi(branch?: string): Promise<any[]> {
+  const query = branch ? `?branch=${encodeURIComponent(branch)}` : '';
+  return apiRequest<any[]>(`/staff/nurses${query}`);
 }
 
 

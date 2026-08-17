@@ -18,6 +18,8 @@ import {
   createStockAdjustmentApi,
   updateStockAdjustmentApi,
   deleteStockAdjustmentApi,
+  fetchStockInwardApi,
+  fetchStockOutwardApi,
 } from '../../services/api';
 import { useHMS } from '../../context/HMSContext';
 import { Modal } from '../../components/common/Modal';
@@ -25,6 +27,8 @@ import { Modal } from '../../components/common/Modal';
 export const StockAdjustmentPage: React.FC = () => {
   const { addToast, storeItems } = useHMS();
   const [adjustments, setAdjustments] = useState<StockAdjustment[]>([]);
+  const [inwardList, setInwardList] = useState<any[]>([]);
+  const [outwardList, setOutwardList] = useState<any[]>([]);
 
   const loadAdjustments = async () => {
     try {
@@ -50,7 +54,54 @@ export const StockAdjustmentPage: React.FC = () => {
 
   useEffect(() => {
     loadAdjustments();
+    Promise.all([
+      fetchStockInwardApi().catch(() => []),
+      fetchStockOutwardApi().catch(() => []),
+    ]).then(([inw, out]) => {
+      if (Array.isArray(inw)) setInwardList(inw);
+      if (Array.isArray(out)) setOutwardList(out);
+    });
   }, []);
+
+  const availableProducts = useMemo(() => {
+    const list: { itemCode: string; itemName: string; batchNumber: string; currentStock: number }[] = [];
+    const seen = new Set<string>();
+
+    storeItems.forEach((i) => {
+      const codeKey = (i.itemCode || '').toLowerCase().trim();
+      const matchedInward = inwardList.find(
+        (inw) => (inw.item_code || inw.itemCode || '').toLowerCase().trim() === codeKey
+      );
+      const batch = matchedInward?.batch_number || matchedInward?.batchNumber || 'BAT-2026-X1';
+
+      if (codeKey) seen.add(codeKey);
+      list.push({
+        itemCode: i.itemCode,
+        itemName: i.itemName,
+        batchNumber: batch,
+        currentStock: Math.max(0, i.currentStock ?? 0),
+      });
+    });
+
+    inwardList.forEach((inw) => {
+      const code = inw.item_code || inw.itemCode || 'MED-001';
+      const name = inw.item_name || inw.itemName || 'Product';
+      const batch = inw.batch_number || inw.batchNumber || 'BAT-2026-X1';
+      const codeKey = code.toLowerCase().trim();
+
+      if (!seen.has(codeKey)) {
+        seen.add(codeKey);
+        list.push({
+          itemCode: code,
+          itemName: name,
+          batchNumber: batch,
+          currentStock: Number(inw.quantity || 0),
+        });
+      }
+    });
+
+    return list;
+  }, [inwardList, storeItems]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('All');
@@ -61,14 +112,16 @@ export const StockAdjustmentPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<StockAdjustment | null>(null);
 
+  const firstItem = availableProducts[0] || { itemCode: 'MED-001', itemName: 'Paracetamol 500mg', currentStock: 100 };
+
   const initialForm: Omit<StockAdjustment, 'id'> = {
     adjustmentNumber: `ADJ-2026-${String(adjustments.length + 1).padStart(3, '0')}`,
     date: new Date().toISOString().split('T')[0],
-    itemCode: storeItems[0]?.itemCode || 'MED-001',
-    itemName: storeItems[0]?.itemName || 'Paracetamol 500mg',
+    itemCode: firstItem.itemCode,
+    itemName: firstItem.itemName,
     type: 'Damage',
-    currentQuantity: storeItems[0]?.currentStock ?? 100,
-    adjustedQuantity: (storeItems[0]?.currentStock ?? 100) - 5,
+    currentQuantity: firstItem.currentStock,
+    adjustedQuantity: Math.max(0, firstItem.currentStock - 5),
     reason: 'Damaged in storage bay',
     approvedBy: 'Store Officer',
   };
@@ -77,11 +130,14 @@ export const StockAdjustmentPage: React.FC = () => {
 
   const handleOpenCreate = () => {
     setSelectedEntry(null);
+    const topProd = availableProducts[0] || firstItem;
     setFormData({
       ...initialForm,
       adjustmentNumber: `ADJ-2026-${String(adjustments.length + 1).padStart(3, '0')}`,
-      itemCode: storeItems[0]?.itemCode || 'MED-001',
-      itemName: storeItems[0]?.itemName || 'Paracetamol 500mg',
+      itemCode: topProd.itemCode,
+      itemName: topProd.itemName,
+      currentQuantity: topProd.currentStock,
+      adjustedQuantity: Math.max(0, topProd.currentStock - 5),
     });
     setIsModalOpen(true);
   };
@@ -113,14 +169,14 @@ export const StockAdjustmentPage: React.FC = () => {
   };
 
   const handleItemSelect = (itemCode: string) => {
-    const item = storeItems.find((i) => i.itemCode === itemCode);
+    const item = availableProducts.find((i) => i.itemCode === itemCode);
     if (item) {
       setFormData({
         ...formData,
         itemCode: item.itemCode,
         itemName: item.itemName,
         currentQuantity: item.currentStock,
-        adjustedQuantity: item.currentStock - 1,
+        adjustedQuantity: Math.max(0, item.currentStock - 5),
       });
     }
   };
@@ -397,9 +453,9 @@ export const StockAdjustmentPage: React.FC = () => {
                 onChange={(e) => handleItemSelect(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
               >
-                {storeItems.map((i) => (
-                  <option key={i.id} value={i.itemCode}>
-                    {i.itemName} ({i.itemCode}) - Stock: {i.currentStock}
+                {availableProducts.map((i, idx) => (
+                  <option key={`${i.itemCode}-${idx}`} value={i.itemCode}>
+                    {i.itemName} ({i.itemCode}) — Batch: {i.batchNumber} | Remaining Stock: {i.currentStock} units
                   </option>
                 ))}
               </select>

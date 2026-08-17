@@ -173,6 +173,11 @@ export const UserManagementPage: React.FC = () => {
       return;
     }
 
+    if (formData.phone && formData.phone.replace(/\D/g, '').length !== 10) {
+      addToast('error', 'Validation Error', 'Mobile number must be exactly 10 digits.');
+      return;
+    }
+
     if (!selectedUser) {
       if (formData.password && formData.password !== formData.confirmPassword) {
         addToast('error', 'Validation Error', 'Password and Confirm Password do not match.');
@@ -600,12 +605,13 @@ export const UserManagementPage: React.FC = () => {
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Phone Number</label>
+              <label className="block font-bold text-slate-700 mb-1">Phone Number (10 digits)</label>
               <input
-                type="text"
+                type="tel"
+                maxLength={10}
                 value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                placeholder="+91 98200 11223"
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                placeholder="10-digit mobile number"
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
               />
             </div>

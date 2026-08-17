@@ -109,21 +109,77 @@ export const PurchaseOrdersPage: React.FC = () => {
     setPoItems((prev) => [...prev, newRow]);
   };
 
+  // Helper to filter store items by category with subcategory & keyword fallback
+  const filterStoreItemsByCategory = (items: ItemMaster[], category: string): ItemMaster[] => {
+    if (!items || items.length === 0) return [];
+    if (!category || category === 'All' || category === 'Pharmaceuticals (All Medicines)') return items;
+
+    const target = category.toLowerCase().trim();
+
+    const matched = items.filter((i) => {
+      const mainCat = (i.category || '').toLowerCase().trim();
+      const subCat = (i.subCategory || '').toLowerCase().trim();
+      const name = (i.itemName || '').toLowerCase().trim();
+      const generic = (i.genericComposition || '').toLowerCase().trim();
+
+      // 1. Direct match on main category or subCategory
+      if (mainCat === target || subCat === target) return true;
+
+      // 2. Contains match in mainCategory, subCategory, name, or generic composition
+      if (mainCat.includes(target) || subCat.includes(target) || name.includes(target) || generic.includes(target)) {
+        return true;
+      }
+
+      // 3. Keyword / Medical sub-class matching
+      if (target.includes('respiratory') && (name.includes('salbutamol') || name.includes('inhaler') || name.includes('budesonide') || generic.includes('salbutamol') || generic.includes('budesonide'))) return true;
+      if (target.includes('antibiotic') && (name.includes('amoxicillin') || name.includes('azithromycin') || name.includes('cefixime') || name.includes('ciprofloxacin') || generic.includes('amox') || generic.includes('cefi'))) return true;
+      if (target.includes('pain') && (name.includes('paracetamol') || name.includes('ibuprofen') || name.includes('tramadol') || name.includes('diclofenac') || generic.includes('paracetamol'))) return true;
+      if (target.includes('diabetes') && (name.includes('metformin') || name.includes('glimepiride') || name.includes('insulin') || generic.includes('metformin'))) return true;
+      if (target.includes('cardio') && (name.includes('amlodipine') || name.includes('atorvastatin') || name.includes('telmisartan') || generic.includes('amlodipine'))) return true;
+
+      // 4. Fallback for pharmaceuticals if selected category is a medicine category
+      const isMedSubcat = MEDICINE_CATEGORIES.some((m) => m.toLowerCase() === target || target.includes(m.toLowerCase()));
+      if (isMedSubcat && (mainCat === 'pharmaceuticals' || mainCat === 'medicines' || mainCat.includes('pharma'))) {
+        return true;
+      }
+
+      return false;
+    });
+
+    return matched.length > 0 ? matched : items;
+  };
+
   const handleUpdateItemRow = (id: string, field: keyof POItem, value: any) => {
     setPoItems((prev) =>
       prev.map((row) => {
         if (row.id !== id) return row;
 
         let updated = { ...row, [field]: value };
-        if (field === 'itemId') {
+
+        if (field === 'category') {
+          // Find matching products in the selected category using category filter helper
+          const categoryItems = filterStoreItemsByCategory(storeItems, String(value));
+
+          if (categoryItems.length > 0) {
+            const firstMatched = categoryItems[0];
+            updated.itemId = firstMatched.id;
+            updated.itemCode = firstMatched.itemCode;
+            updated.itemName = firstMatched.itemName;
+            updated.genericComposition = firstMatched.genericComposition || firstMatched.itemName;
+            updated.strength = firstMatched.strength || 'Standard';
+            updated.dosageForm = firstMatched.dosageForm || 'Tablet';
+            updated.unitPrice = firstMatched.unitPrice;
+            updated.gst = firstMatched.gstPercentage;
+          }
+        } else if (field === 'itemId') {
           const matched = storeItems.find((i) => i.id === value);
           if (matched) {
             updated.itemCode = matched.itemCode;
             updated.itemName = matched.itemName;
-            updated.category = matched.category || updated.category || 'Antibiotics';
-            updated.genericComposition = matched.genericComposition || updated.genericComposition || '';
-            updated.strength = matched.strength || updated.strength || '';
-            updated.dosageForm = matched.dosageForm || updated.dosageForm || 'Tablet';
+            updated.category = matched.category || updated.category || 'Pharmaceuticals';
+            updated.genericComposition = matched.genericComposition || matched.itemName;
+            updated.strength = matched.strength || 'Standard';
+            updated.dosageForm = matched.dosageForm || 'Tablet';
             updated.unitPrice = matched.unitPrice;
             updated.gst = matched.gstPercentage;
           }
@@ -314,7 +370,14 @@ export const PurchaseOrdersPage: React.FC = () => {
       const vName = (po.vendorName || (po as any).vendor_name || '').toLowerCase();
       const query = (searchQuery || '').toLowerCase();
       const matchesSearch = poNum.includes(query) || vName.includes(query);
-      const matchesStatus = statusFilter === 'All' || po.status === statusFilter;
+      const matchesStatus =
+        statusFilter === 'All'
+          ? true
+          : statusFilter === 'Not Updated'
+          ? po.status !== 'Fulfilled' && po.status !== 'Completed'
+          : statusFilter === 'Fulfilled'
+          ? po.status === 'Fulfilled' || po.status === 'Completed'
+          : po.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [purchaseOrders, searchQuery, statusFilter]);
@@ -376,11 +439,12 @@ export const PurchaseOrdersPage: React.FC = () => {
             className="bg-transparent font-bold text-blue-600 outline-none cursor-pointer"
           >
             <option value="All">All Statuses</option>
+            <option value="Not Updated">Not Updated / Pending Receipt</option>
+            <option value="Fulfilled">Fulfilled / Updated</option>
             <option value="Draft">Draft</option>
             <option value="Pending">Pending</option>
             <option value="Approved">Approved</option>
             <option value="Rejected">Rejected</option>
-            <option value="Fulfilled">Fulfilled</option>
           </select>
         </div>
       </div>
@@ -430,18 +494,20 @@ export const PurchaseOrdersPage: React.FC = () => {
                     <td className="py-3.5 px-4">
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          po.status === 'Approved'
+                          po.status === 'Fulfilled' || po.status === 'Completed'
+                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                            : po.status === 'Approved'
                             ? 'bg-emerald-100 text-emerald-700'
                             : po.status === 'Pending'
                             ? 'bg-amber-100 text-amber-700'
                             : po.status === 'Rejected'
                             ? 'bg-rose-100 text-rose-700'
-                            : po.status === 'Fulfilled'
-                            ? 'bg-blue-100 text-blue-700'
                             : 'bg-slate-100 text-slate-600'
                         }`}
                       >
-                        {po.status}
+                        {po.status === 'Fulfilled' || po.status === 'Completed'
+                          ? '✓ Fulfilled (Updated)'
+                          : `${po.status} (Not Updated)`}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-right">
@@ -644,13 +710,17 @@ export const PurchaseOrdersPage: React.FC = () => {
                         <select
                           value={item.itemId}
                           onChange={(e) => handleUpdateItemRow(item.id, 'itemId', e.target.value)}
-                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-slate-900 outline-none text-xs"
+                          className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 font-bold text-slate-900 outline-none text-xs cursor-pointer shadow-2xs"
                         >
-                          {storeItems.map((i) => (
-                            <option key={i.id} value={i.id}>
-                              {i.itemName} ({i.itemCode}) — ₹{i.unitPrice} [{i.category}]
-                            </option>
-                          ))}
+                          {(() => {
+                            const listToRender = filterStoreItemsByCategory(storeItems, item.category);
+
+                            return listToRender.map((i) => (
+                              <option key={i.id} value={i.id}>
+                                {i.itemName} ({i.itemCode}) — ₹{i.unitPrice} [{i.category}]
+                              </option>
+                            ));
+                          })()}
                         </select>
                       </div>
 
@@ -671,35 +741,44 @@ export const PurchaseOrdersPage: React.FC = () => {
                     </div>
 
                     {/* Metadata Row: Generic/Composition, Strength, Dosage Form */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-white/70 p-2 rounded-lg border border-slate-200/60">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 bg-white/80 p-2.5 rounded-lg border border-slate-200/80 shadow-2xs">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Generic / Composition</label>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="text-[10px] font-bold text-slate-500 block">Generic / Composition</label>
+                          <span className="text-[9px] font-extrabold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-100">Auto-filled</span>
+                        </div>
                         <input
                           type="text"
                           placeholder="e.g. Glimepiride + Metformin"
                           value={item.genericComposition || ''}
                           onChange={(e) => handleUpdateItemRow(item.id, 'genericComposition', e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 font-medium text-slate-900 text-xs outline-none focus:bg-white"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 font-semibold text-slate-900 text-xs outline-none focus:bg-white focus:border-blue-400"
                         />
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Strength</label>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="text-[10px] font-bold text-slate-500 block">Strength</label>
+                          <span className="text-[9px] font-extrabold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-100">Auto-filled</span>
+                        </div>
                         <input
                           type="text"
                           placeholder="e.g. 2 mg + 500 mg"
                           value={item.strength || ''}
                           onChange={(e) => handleUpdateItemRow(item.id, 'strength', e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 font-medium text-slate-900 text-xs outline-none focus:bg-white"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 font-semibold text-slate-900 text-xs outline-none focus:bg-white focus:border-blue-400"
                         />
                       </div>
 
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Dosage Form</label>
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="text-[10px] font-bold text-slate-500 block">Dosage Form</label>
+                          <span className="text-[9px] font-extrabold text-blue-700 bg-blue-50 px-1 py-0.2 rounded border border-blue-100">Auto-filled</span>
+                        </div>
                         <select
                           value={item.dosageForm || 'Tablet'}
                           onChange={(e) => handleUpdateItemRow(item.id, 'dosageForm', e.target.value)}
-                          className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 font-medium text-slate-900 text-xs outline-none focus:bg-white"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-md px-2 py-1 font-semibold text-slate-900 text-xs outline-none focus:bg-white focus:border-blue-400"
                         >
                           <option value="Tablet">Tablet</option>
                           <option value="Capsule">Capsule</option>

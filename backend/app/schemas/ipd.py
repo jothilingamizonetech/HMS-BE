@@ -52,13 +52,15 @@ class IPDAdmissionBase(BaseModel):
     patient_uhid: str
     patient_name: str
     ward: str
-    room_number: str
+    room_number: str | None = "R-101"
     bed_number: str
     attending_doctor: str
+    attending_nurse: str | None = None
     admission_reason: str | None = None
-    emergency_contact: str
+    emergency_contact: str | None = "N/A"
     insurance_provider: str | None = None
     insurance_number: str | None = None
+    branch: str | None = None
 
 
 class IPDAdmissionCreate(IPDAdmissionBase):
@@ -73,10 +75,12 @@ class IPDAdmissionUpdate(BaseModel):
     room_number: str | None = None
     bed_number: str | None = None
     attending_doctor: str | None = None
+    attending_nurse: str | None = None
     admission_reason: str | None = None
     emergency_contact: str | None = None
     insurance_provider: str | None = None
     insurance_number: str | None = None
+    branch: str | None = None
     status: IPDStatus | None = None
 
 
@@ -84,4 +88,6 @@ class IPDAdmissionOut(IPDAdmissionBase, TimestampedORMBase):
     patient_id: str | None = None
     bed_id: str | None = None
     admission_date: str
+    attending_nurse: str | None = None
+    branch: str | None = None
     status: IPDStatus

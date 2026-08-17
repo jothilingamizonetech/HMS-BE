@@ -35,7 +35,9 @@ import {
   allocateBedApi,
   releaseBedApi,
   fetchNotificationsApi,
+  createNotificationApi,
   markNotificationReadApi,
+  markAllNotificationsReadApi,
   fetchStoreItemsApi,
   createStoreItemApi,
   updateStoreItemApi,
@@ -109,7 +111,19 @@ interface HMSContextType {
 
   // Notifications & UI
   notifications: Notification[];
+  sendNotification: (notificationData: {
+    title: string;
+    message: string;
+    type?: 'info' | 'warning' | 'success';
+    module?: string;
+    eventType?: string;
+    senderName?: string;
+    recipientRole?: string;
+    relatedRecordId?: string;
+    priority?: string;
+  }) => Promise<Notification>;
   markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
   toasts: ToastMessage[];
   addToast: (type: ToastMessage['type'], title: string, message: string) => void;
   removeToast: (id: string) => void;
@@ -222,6 +236,9 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           itemName: i.item_name || i.itemName,
           category: i.category,
           subCategory: i.sub_category || i.subCategory || '',
+          genericComposition: i.generic_composition || i.genericComposition || '',
+          strength: i.strength || '',
+          dosageForm: i.dosage_form || i.dosageForm || 'Tablet',
           unit: i.unit,
           packQuantity: i.pack_quantity ?? i.packQuantity ?? 1,
           issueUnit: i.issue_unit || i.issueUnit || 'Piece',
@@ -290,10 +307,10 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // ── Nurse ─────────────────────────────────────────────────────────────────
-    if (role === 'nurse') {
+    if (role === 'nurse' || role.includes('nurse')) {
       try {
         const [pts, bds, adm, depts, docs, apts, qItems, notifs, stItems, pos] = await Promise.all([
-          fetchPatientsApi(userBranch).catch(() => null),
+          fetchPatientsApi().catch(() => null),
           fetchBedsApi(userBranch).catch(() => null),
           fetchIpdAdmissionsApi(userBranch).catch(() => null),
           fetchDepartmentsApi().catch(() => null),
@@ -437,6 +454,22 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addPatient = async (patientData: Omit<Patient, 'id' | 'uhid' | 'registrationDate' | 'status'>): Promise<Patient> => {
     try {
+      const targetMob = (patientData.mobile || '').replace(/\D/g, '').slice(-10);
+      const targetName = `${patientData.firstName || ''} ${patientData.lastName || ''}`.trim().toLowerCase();
+
+      const existingMatch = patients.find((p) => {
+        const pMob = (p.mobile || '').replace(/\D/g, '').slice(-10);
+        const pName = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase();
+        if (targetMob && pMob && targetMob === pMob) return true;
+        if (targetName && pName && targetName === pName) return true;
+        return false;
+      });
+
+      if (existingMatch) {
+        addToast('info', 'Patient Matched', `Using existing patient record (UHID: ${existingMatch.uhid})`);
+        return existingMatch;
+      }
+
       const created = await createPatientApi(patientData);
       setPatients((prev) => [created, ...prev]);
       addToast('success', 'Patient Registered', `Patient registered with UHID: ${created.uhid}`);
@@ -537,9 +570,9 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const updateAppointment = async (id: string, updated: Partial<Appointment>): Promise<void> => {
     try {
       const result = await updateAppointmentApi(id, updated);
-      setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, ...result } : a)));
+      setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, ...updated, ...result } : a)));
       addToast('success', 'Appointment Updated', `Appointment #${id} updated.`);
-      loadBackendData();
+      await loadBackendData();
     } catch (err: any) {
       console.error('updateAppointment failed:', err);
       addToast('error', 'Update Failed', err?.message || 'Failed to update appointment');
@@ -748,6 +781,13 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updatedBed = await releaseBedApi(bedId);
       const mapped = mapBedResponse(updatedBed);
       setBeds((prev) => prev.map((b) => (b.id === bedId ? mapped : b)));
+      setIpdAdmissions((prev) =>
+        prev.map((adm) =>
+          adm.bedNumber === mapped.bedNumber || (mapped.currentPatientUhid && adm.patientUhid === mapped.currentPatientUhid)
+            ? { ...adm, status: 'Discharged' }
+            : adm
+        )
+      );
       if (mapped.status === 'Available') {
         addToast('success', 'Bed Available', `Bed ${mapped.bedNumber} is now available.`);
       } else {
@@ -770,7 +810,13 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         itemName: created.item_name || created.itemName,
         category: created.category,
         subCategory: created.sub_category || created.subCategory || '',
+        genericComposition: created.generic_composition || created.genericComposition || itemData.genericComposition || '',
+        strength: created.strength || itemData.strength || '',
+        dosageForm: created.dosage_form || created.dosageForm || itemData.dosageForm || 'Tablet',
         unit: created.unit,
+        packQuantity: created.pack_quantity ?? created.packQuantity ?? itemData.packQuantity ?? 1,
+        issueUnit: created.issue_unit || created.issueUnit || itemData.issueUnit || 'Piece',
+        openingStock: created.opening_stock ?? created.openingStock ?? itemData.openingStock ?? 0,
         brand: created.brand || '',
         hsnCode: created.hsn_code || created.hsnCode || '',
         gstPercentage: created.gst_percentage ?? created.gstPercentage ?? 0,
@@ -802,7 +848,13 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         itemName: updated.item_name || updated.itemName || itemData.itemName,
         category: updated.category || itemData.category,
         subCategory: updated.sub_category || updated.subCategory || itemData.subCategory || '',
+        genericComposition: updated.generic_composition ?? updated.genericComposition ?? itemData.genericComposition ?? '',
+        strength: updated.strength ?? itemData.strength ?? '',
+        dosageForm: updated.dosage_form ?? updated.dosageForm ?? itemData.dosageForm ?? 'Tablet',
         unit: updated.unit || itemData.unit,
+        packQuantity: updated.pack_quantity ?? updated.packQuantity ?? itemData.packQuantity ?? 1,
+        issueUnit: updated.issue_unit || updated.issueUnit || itemData.issueUnit || 'Piece',
+        openingStock: updated.opening_stock ?? updated.openingStock ?? itemData.openingStock ?? 0,
         brand: updated.brand || itemData.brand || '',
         hsnCode: updated.hsn_code || updated.hsnCode || itemData.hsnCode || '',
         gstPercentage: updated.gst_percentage ?? updated.gstPercentage ?? itemData.gstPercentage ?? 0,
@@ -887,15 +939,47 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Notifications
+  const sendNotification = async (notificationData: any): Promise<Notification> => {
+    try {
+      const created = await createNotificationApi(notificationData);
+      setNotifications((prev) => [created, ...prev]);
+      return created;
+    } catch (err) {
+      console.error('sendNotification failed:', err);
+      const localNotif: Notification = {
+        id: `notif-${Date.now()}`,
+        title: notificationData.title,
+        message: notificationData.message,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: notificationData.type || 'info',
+        read: false,
+        module: notificationData.module,
+        eventType: notificationData.eventType,
+        senderName: notificationData.senderName,
+        recipientRole: notificationData.recipientRole,
+        relatedRecordId: notificationData.relatedRecordId,
+        priority: notificationData.priority,
+      };
+      setNotifications((prev) => [localNotif, ...prev]);
+      return localNotif;
+    }
+  };
+
   const markNotificationRead = async (id: string) => {
     try {
       await markNotificationReadApi(id);
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     } catch (err) {
       console.error('markNotificationRead failed:', err);
-      // Deliberately no error toast here: a failed "mark as read" is low
-      // stakes and firing a toast every time a notification bell is clicked
-      // during a network hiccup would be noisy. It simply stays unread.
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await markAllNotificationsReadApi();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch (err) {
+      console.error('markAllNotificationsRead failed:', err);
     }
   };
 
@@ -940,7 +1024,9 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatePurchaseOrder,
         deletePurchaseOrder,
         notifications,
+        sendNotification,
         markNotificationRead,
+        markAllNotificationsRead,
         toasts,
         addToast,
         removeToast,

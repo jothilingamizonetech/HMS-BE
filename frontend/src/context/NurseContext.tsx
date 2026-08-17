@@ -78,6 +78,18 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [medications, setMedications] = useState<MedicationAdmin[]>([]);
   const [activities, setActivities] = useState<NurseActivity[]>([]);
 
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('hms_user');
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u?.branch && u.branch !== 'All' && selectedBranch === 'All') {
+          setSelectedBranch(u.branch);
+        }
+      }
+    } catch { /* proceed */ }
+  }, []);
+
   const loadData = async () => {
     const token = localStorage.getItem('hms_token');
     if (!token) return;
@@ -88,8 +100,9 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (saved) {
         const u = JSON.parse(saved);
         const role = (u?.role || '').toString().toLowerCase().replace('userrole.', '');
-        const clinicalRoles = ['nurse', 'admin', 'super_admin', 'superadmin', 'doctor'];
-        if (!clinicalRoles.includes(role)) return;
+        const clinicalRoles = ['nurse', 'admin', 'super_admin', 'superadmin', 'doctor', 'staff'];
+        const isClinicalRole = clinicalRoles.some((cr) => role.includes(cr));
+        if (!isClinicalRole) return;
       }
     } catch { /* proceed */ }
 
@@ -103,94 +116,117 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       ]);
 
       if (apiVitals && Array.isArray(apiVitals)) {
-        setVitals(
-          apiVitals.map((v: any): VitalSign => ({
-            id: v.id,
-            patientUhid: v.patient_uhid,
-            patientName: v.patient_name || '',
-            age: 0,
-            gender: 'Male',
-            doctorId: '',
-            doctorName: '',
-            department: '',
-            height: 0,
-            weight: 0,
-            temperature: v.temperature,
-            bloodPressure: `${v.bp_sys}/${v.bp_dia}`,
-            pulseRate: v.pulse,
-            respiratoryRate: v.resp_rate,
-            spO2: v.spo2,
-            bloodSugar: 0,
-            painScale: 0,
-            remarks: '',
-            recordedBy: v.recorded_by,
-            date: v.recorded_at?.split('T')[0] || v.recorded_at || '',
-            time: v.recorded_at?.split('T')[1]?.substring(0, 5) || '',
-          }))
-        );
+        const seenV = new Set<string>();
+        const mappedVitals: VitalSign[] = [];
+        apiVitals.forEach((v: any) => {
+          const rawId = v.id || `vital-${Math.random()}`;
+          if (!seenV.has(rawId)) {
+            seenV.add(rawId);
+            mappedVitals.push({
+              id: rawId,
+              patientUhid: v.patient_uhid || v.patientUhid || '',
+              patientName: v.patient_name || v.patientName || '',
+              age: v.age ?? 0,
+              gender: v.gender || 'Male',
+              doctorId: v.doctor_id || v.doctorId || '',
+              doctorName: v.doctor_name || v.doctorName || '',
+              department: v.department || '',
+              height: v.height ?? 170,
+              weight: v.weight ?? 70,
+              temperature: v.temperature ?? 98.6,
+              bloodPressure: v.blood_pressure || v.bloodPressure || `${v.bp_sys || 120}/${v.bp_dia || 80}`,
+              pulseRate: v.pulse_rate || v.pulseRate || v.pulse || 72,
+              respiratoryRate: v.respiratory_rate || v.respiratoryRate || v.resp_rate || 16,
+              spO2: v.spo2 || v.spO2 || 98,
+              bloodSugar: v.blood_sugar || v.bloodSugar || 110,
+              painScale: v.pain_scale || v.painScale || 1,
+              remarks: v.remarks || '',
+              recordedBy: v.recorded_by || v.recordedBy || 'Nurse',
+              date: v.date || v.recorded_at?.split('T')[0] || v.recordedAt?.split('T')[0] || new Date().toISOString().split('T')[0],
+              time: v.time || v.recorded_at?.split('T')[1]?.substring(0, 5) || v.recordedAt?.split('T')[1]?.substring(0, 5) || '08:00',
+              branch: v.branch || v.branch_name || 'Main Branch',
+            });
+          }
+        });
+        setVitals(mappedVitals);
       }
 
       if (apiNotes && Array.isArray(apiNotes)) {
-        setNotes(
-          apiNotes.map((n: any): NursingNote => ({
-            id: n.id,
-            patientUhid: n.patient_uhid,
-            patientName: n.patient_name || '',
-            ward: '',
-            diagnosis: '',
-            observation: n.note,
-            symptoms: '',
-            treatmentResponse: '',
-            doctorInstructions: '',
-            fluidIntake: 0,
-            fluidOutput: 0,
-            patientCondition: (n.category as any) || 'Stable',
-            notes: n.note,
-            recordedBy: n.nurse_name,
-            date: n.created_at_time?.split('T')[0] || '',
-            time: n.created_at_time?.split('T')[1]?.substring(0, 5) || '',
-          }))
-        );
+        const seenN = new Set<string>();
+        const mappedNotes: NursingNote[] = [];
+        apiNotes.forEach((n: any) => {
+          const rawId = n.id || `note-${Math.random()}`;
+          if (!seenN.has(rawId)) {
+            seenN.add(rawId);
+            mappedNotes.push({
+              id: rawId,
+              patientUhid: n.patient_uhid || n.patientUhid || '',
+              patientName: n.patient_name || n.patientName || '',
+              ward: n.ward || 'General Ward',
+              diagnosis: n.diagnosis || '',
+              observation: n.observation || n.note || n.notes || '',
+              symptoms: n.symptoms || '',
+              treatmentResponse: n.treatment_response || n.treatmentResponse || '',
+              doctorInstructions: n.doctor_instructions || n.doctorInstructions || '',
+              fluidIntake: n.fluid_intake ?? n.fluidIntake ?? 1500,
+              fluidOutput: n.fluid_output ?? n.fluidOutput ?? 1400,
+              patientCondition: n.patient_condition || n.patientCondition || n.category || 'Stable',
+              notes: n.notes || n.note || n.observation || '',
+              recordedBy: n.nurse_name || n.nurseName || n.recorded_by || n.recordedBy || 'Nurse',
+              date: n.date || n.created_at_time?.split('T')[0] || n.createdAtTime?.split('T')[0] || new Date().toISOString().split('T')[0],
+              time: n.time || n.created_at_time?.split('T')[1]?.substring(0, 5) || n.createdAtTime?.split('T')[1]?.substring(0, 5) || '08:00',
+            });
+          }
+        });
+        setNotes(mappedNotes);
       }
 
       if (apiMeds && Array.isArray(apiMeds)) {
-        setMedications(
-          apiMeds.map((m: any): MedicationAdmin => ({
-            id: m.id,
-            patientUhid: m.patient_uhid,
-            patientName: m.patient_name || '',
-            ward: '',
-            doctorName: '',
-            medicineName: m.medicine_name,
-            dosage: m.dosage,
-            route: (m.route as any) || 'Oral',
-            frequency: 'Once Daily (OD)',
-            scheduledTime: m.scheduled_time,
-            givenTime: m.administered_at,
-            status: (m.status as any) || 'Scheduled',
-            nurseName: m.nurse_name,
-          }))
-        );
+        const seenM = new Set<string>();
+        const mappedMeds: MedicationAdmin[] = [];
+        apiMeds.forEach((m: any) => {
+          const rawId = m.id || `med-${Math.random()}`;
+          if (!seenM.has(rawId)) {
+            seenM.add(rawId);
+            mappedMeds.push({
+              id: rawId,
+              patientUhid: m.patient_uhid || m.patientUhid || '',
+              patientName: m.patient_name || m.patientName || '',
+              ward: m.ward || 'General Ward',
+              doctorName: m.doctor_name || m.doctorName || 'Dr. Vikram Malhotra',
+              medicineName: m.medicine_name || m.medicineName || '',
+              dosage: m.dosage || '1 Tablet',
+              route: (m.route as any) || 'Oral',
+              frequency: m.frequency || 'Once Daily (OD)',
+              scheduledTime: m.scheduled_time || m.scheduledTime || '08:00 AM',
+              givenTime: m.given_time || m.givenTime || m.administered_at || m.administeredAt || '',
+              status: (m.status as any) || 'Scheduled',
+              nurseName: m.nurse_name || m.nurseName || 'Nurse',
+              remarks: m.remarks || '',
+            });
+          }
+        });
+        setMedications(mappedMeds);
       }
 
       if (apiTransfers && Array.isArray(apiTransfers)) {
         setTransfers(
           apiTransfers.map((t: any): WardTransfer => ({
             id: t.id,
-            transferId: `WT-${t.id?.slice(0, 6)}`,
-            patientUhid: t.patient_uhid,
-            patientName: t.patient_name || '',
-            doctorName: t.doctor_name || 'Dr. Vikram Malhotra',
-            currentWard: t.current_ward || '',
-            currentBed: t.current_bed || '',
-            newWard: t.new_ward || '',
-            newBed: t.new_bed || '',
-            transferReason: t.reason || '',
-            transferDate: t.requested_at?.split('T')[0] || t.requested_at || '',
-            transferTime: t.requested_at?.split('T')[1]?.substring(0, 5) || '',
-            doctorApproval: 'Approved',
+            transferId: t.transfer_id || t.transferId || `WT-${t.id?.slice(0, 6)}`,
+            patientUhid: t.patient_uhid || t.patientUhid || '',
+            patientName: t.patient_name || t.patientName || '',
+            doctorName: t.doctor_name || t.doctorName || 'Dr. Vikram Malhotra',
+            currentWard: t.current_ward || t.currentWard || 'General Ward',
+            currentBed: t.current_bed || t.currentBed || '',
+            newWard: t.new_ward || t.newWard || 'ICU Ward',
+            newBed: t.new_bed || t.newBed || '',
+            transferReason: t.transfer_reason || t.transferReason || t.reason || '',
+            transferDate: t.transfer_date || t.transferDate || t.requested_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+            transferTime: t.transfer_time || t.transferTime || t.requested_at?.split('T')[1]?.substring(0, 5) || '08:00',
+            doctorApproval: t.doctor_approval || t.doctorApproval || 'Approved',
             remarks: t.remarks || '',
-            transferredBy: t.requested_by || 'Nurse',
+            transferredBy: t.transferred_by || t.transferredBy || t.requested_by || 'Nurse',
             status: (t.status as any) || 'Approved',
           }))
         );
@@ -234,16 +270,29 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const addVitalSign = async (data: Omit<VitalSign, 'id'>) => {
     const [bpSys, bpDia] = (data.bloodPressure || '120/80').split('/').map(Number);
     const payload = {
-      patient_uhid: data.patientUhid,
-      patient_name: data.patientName,
+      patientUhid: data.patientUhid,
+      patientName: data.patientName,
+      age: data.age,
+      gender: data.gender,
+      doctorId: data.doctorId,
+      doctorName: data.doctorName,
+      department: data.department,
+      height: data.height,
+      weight: data.weight,
       temperature: data.temperature,
-      pulse: data.pulseRate,
-      bp_sys: bpSys || 120,
-      bp_dia: bpDia || 80,
-      resp_rate: data.respiratoryRate,
-      spo2: data.spO2,
-      recorded_by: data.recordedBy,
-      recorded_at: `${data.date}T${data.time || '00:00'}`,
+      bloodPressure: data.bloodPressure,
+      bpSys: bpSys || 120,
+      bpDia: bpDia || 80,
+      pulseRate: data.pulseRate,
+      respiratoryRate: data.respiratoryRate,
+      spO2: data.spO2,
+      bloodSugar: data.bloodSugar,
+      painScale: data.painScale,
+      remarks: data.remarks,
+      recordedBy: data.recordedBy,
+      recordedAt: `${data.date}T${data.time || '00:00'}`,
+      date: data.date,
+      time: data.time,
     };
     try {
       const created = await createVitalApi(payload);
@@ -259,8 +308,15 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const updateVitalSign = async (id: string, updated: Partial<VitalSign>) => {
+    const bpStr = updated.bloodPressure || '120/80';
+    const [bpSys, bpDia] = bpStr.split('/').map(Number);
+    const payload = {
+      ...updated,
+      bpSys: bpSys || 120,
+      bpDia: bpDia || 80,
+    };
     try {
-      await updateVitalApi(id, updated);
+      await updateVitalApi(id, payload);
       setVitals((prev) => prev.map((v) => (v.id === id ? { ...v, ...updated } : v)));
       addToast('success', 'Vitals Updated', 'Vital record modified successfully.');
     } catch (err) {
@@ -361,12 +417,24 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // 3. Nursing Notes CRUD
   const addNursingNote = async (data: Omit<NursingNote, 'id'>) => {
     const payload = {
-      patient_uhid: data.patientUhid,
-      patient_name: data.patientName,
+      patientUhid: data.patientUhid,
+      patientName: data.patientName,
+      ward: data.ward || 'General Ward',
+      diagnosis: data.diagnosis || '',
+      observation: data.observation || data.notes || '',
+      symptoms: data.symptoms || '',
+      treatmentResponse: data.treatmentResponse || '',
+      doctorInstructions: data.doctorInstructions || '',
+      fluidIntake: data.fluidIntake,
+      fluidOutput: data.fluidOutput,
+      patientCondition: data.patientCondition || 'Stable',
       category: data.patientCondition || 'General Note',
-      note: data.observation || data.notes,
-      nurse_name: data.recordedBy,
-      created_at_time: `${data.date}T${data.time || '00:00'}`,
+      notes: data.notes || data.observation || '',
+      nurseName: data.recordedBy,
+      recordedBy: data.recordedBy,
+      createdAtTime: `${data.date}T${data.time || '00:00'}`,
+      date: data.date,
+      time: data.time,
     };
     try {
       const created = await createNursingNoteApi(payload);
@@ -414,14 +482,20 @@ export const NurseProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // 4. Medication Admin CRUD
   const addMedicationAdmin = async (data: Omit<MedicationAdmin, 'id'>) => {
     const payload = {
-      patient_uhid: data.patientUhid,
-      patient_name: data.patientName,
-      medicine_name: data.medicineName,
+      patientUhid: data.patientUhid,
+      patientName: data.patientName,
+      ward: data.ward || 'General Ward',
+      doctorName: data.doctorName || 'Dr. Vikram Malhotra',
+      medicineName: data.medicineName,
       dosage: data.dosage,
       route: data.route,
-      scheduled_time: data.scheduledTime,
+      frequency: data.frequency || 'Once Daily (OD)',
+      scheduledTime: data.scheduledTime,
+      administeredAt: data.givenTime || data.scheduledTime,
+      givenTime: data.givenTime,
       status: data.status || 'Scheduled',
-      nurse_name: data.nurseName,
+      nurseName: data.nurseName,
+      remarks: data.remarks,
     };
     try {
       const created = await createMedicationApi(payload);

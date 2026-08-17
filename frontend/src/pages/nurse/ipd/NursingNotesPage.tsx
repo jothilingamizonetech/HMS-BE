@@ -26,6 +26,12 @@ export const NursingNotesPage: React.FC = () => {
   // Active Selected Patient from HMS Database
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(patients[0] || null);
 
+  React.useEffect(() => {
+    if (!selectedPatient && patients.length > 0) {
+      setSelectedPatient(patients[0]);
+    }
+  }, [patients, selectedPatient]);
+
   // Editable Nursing Notes Form for active patient
   const [notesForm, setNotesForm] = useState({
     observation: '',
@@ -339,8 +345,8 @@ export const NursingNotesPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {paginatedNotes.length > 0 ? (
-                paginatedNotes.map((n) => (
-                  <tr key={n.id} className="hover:bg-slate-50/70 transition-colors">
+                paginatedNotes.map((n, idx) => (
+                  <tr key={`${n.id}-${idx}`} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-3.5 px-4">
                       <p className="font-bold text-slate-900">{n.patientName}</p>
                       <p className="text-[10px] text-blue-600 font-mono font-semibold">{n.patientUhid}</p>
@@ -399,8 +405,8 @@ export const NursingNotesPage: React.FC = () => {
           <div className="space-y-4 text-xs p-2">
             {timelineNotesList.length > 0 ? (
               <div className="space-y-3">
-                {timelineNotesList.map((tn) => (
-                  <div key={tn.id} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                {timelineNotesList.map((tn, idx) => (
+                  <div key={`${tn.id}-${idx}`} className="p-3 bg-slate-50 rounded-xl border border-slate-200">
                     <div className="flex justify-between font-bold text-slate-900">
                       <span>{tn.date} at {tn.time}</span>
                       <span className="text-blue-600">{tn.patientCondition}</span>

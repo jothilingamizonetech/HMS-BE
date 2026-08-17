@@ -13,13 +13,15 @@ import {
   Trash2,
 } from 'lucide-react';
 import { StockTransfer } from '../../types/store';
-import { fetchStockTransferApi, createStockTransferApi, updateStockTransferApi, deleteStockTransferApi } from '../../services/api';
+import { fetchStockTransferApi, createStockTransferApi, updateStockTransferApi, deleteStockTransferApi, fetchStockInwardApi, fetchStockOutwardApi } from '../../services/api';
 import { useHMS } from '../../context/HMSContext';
 import { Modal } from '../../components/common/Modal';
 
 export const StockTransferPage: React.FC = () => {
   const { addToast, storeItems } = useHMS();
   const [transfers, setTransfers] = useState<StockTransfer[]>([]);
+  const [inwardList, setInwardList] = useState<any[]>([]);
+  const [outwardList, setOutwardList] = useState<any[]>([]);
 
   const loadTransfers = async () => {
     try {
@@ -46,7 +48,54 @@ export const StockTransferPage: React.FC = () => {
 
   useEffect(() => {
     loadTransfers();
+    Promise.all([
+      fetchStockInwardApi().catch(() => []),
+      fetchStockOutwardApi().catch(() => []),
+    ]).then(([inw, out]) => {
+      if (Array.isArray(inw)) setInwardList(inw);
+      if (Array.isArray(out)) setOutwardList(out);
+    });
   }, []);
+
+  const availableProducts = useMemo(() => {
+    const list: { itemCode: string; itemName: string; batchNumber: string; currentStock: number }[] = [];
+    const seen = new Set<string>();
+
+    storeItems.forEach((i) => {
+      const codeKey = (i.itemCode || '').toLowerCase().trim();
+      const matchedInward = inwardList.find(
+        (inw) => (inw.item_code || inw.itemCode || '').toLowerCase().trim() === codeKey
+      );
+      const batch = matchedInward?.batch_number || matchedInward?.batchNumber || 'BAT-2026-X1';
+
+      if (codeKey) seen.add(codeKey);
+      list.push({
+        itemCode: i.itemCode,
+        itemName: i.itemName,
+        batchNumber: batch,
+        currentStock: Math.max(0, i.currentStock ?? 0),
+      });
+    });
+
+    inwardList.forEach((inw) => {
+      const code = inw.item_code || inw.itemCode || 'MED-001';
+      const name = inw.item_name || inw.itemName || 'Product';
+      const batch = inw.batch_number || inw.batchNumber || 'BAT-2026-X1';
+      const codeKey = code.toLowerCase().trim();
+
+      if (!seen.has(codeKey)) {
+        seen.add(codeKey);
+        list.push({
+          itemCode: code,
+          itemName: name,
+          batchNumber: batch,
+          currentStock: Number(inw.quantity || 0),
+        });
+      }
+    });
+
+    return list;
+  }, [inwardList, storeItems]);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -56,14 +105,16 @@ export const StockTransferPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<StockTransfer | null>(null);
 
+  const firstItem = availableProducts[0] || { itemCode: 'MED-001', itemName: 'Paracetamol 500mg', batchNumber: 'BAT-2026-X1' };
+
   const initialForm: Omit<StockTransfer, 'id'> = {
     transferNumber: `TR-2026-${String(transfers.length + 1).padStart(3, '0')}`,
     source: 'Central Store Bay 1',
     destination: 'Pharmacy Store',
     transferDate: new Date().toISOString().split('T')[0],
-    itemCode: storeItems[0]?.itemCode || 'MED-001',
-    itemName: storeItems[0]?.itemName || 'Paracetamol 500mg',
-    batchNumber: 'BAT-2026-X1',
+    itemCode: firstItem.itemCode,
+    itemName: firstItem.itemName,
+    batchNumber: firstItem.batchNumber,
     quantity: 50,
     status: 'Completed',
     requestedBy: 'Pharmacy Incharge',
@@ -73,11 +124,13 @@ export const StockTransferPage: React.FC = () => {
 
   const handleOpenCreate = () => {
     setSelectedEntry(null);
+    const topProd = availableProducts[0] || firstItem;
     setFormData({
       ...initialForm,
       transferNumber: `TR-2026-${String(transfers.length + 1).padStart(3, '0')}`,
-      itemCode: storeItems[0]?.itemCode || 'MED-001',
-      itemName: storeItems[0]?.itemName || 'Paracetamol 500mg',
+      itemCode: topProd.itemCode,
+      itemName: topProd.itemName,
+      batchNumber: topProd.batchNumber,
     });
     setIsModalOpen(true);
   };
@@ -109,18 +162,32 @@ export const StockTransferPage: React.FC = () => {
   };
 
   const handleItemSelect = (itemCode: string) => {
-    const matched = storeItems.find((i) => i.itemCode === itemCode);
+    const matched = availableProducts.find((i) => i.itemCode === itemCode);
     if (matched) {
       setFormData({
         ...formData,
         itemCode: matched.itemCode,
         itemName: matched.itemName,
+        batchNumber: matched.batchNumber || formData.batchNumber,
       });
     }
   };
 
   const handleSaveTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
+    const currentProd = availableProducts.find((i) => i.itemCode === formData.itemCode);
+    const availableQty = currentProd?.currentStock ?? 0;
+
+    if (availableQty <= 0) {
+      addToast('error', 'Item Out of Stock', `Selected item (${formData.itemName}) is currently out of stock (0 available). Cannot transfer stock.`);
+      return;
+    }
+
+    if (formData.quantity > availableQty) {
+      addToast('error', 'Stock Exceeded', `Cannot transfer ${formData.quantity} units. Only ${availableQty} units available in stock.`);
+      return;
+    }
+
     try {
       const result = selectedEntry
         ? await updateStockTransferApi(selectedEntry.id, formData)
@@ -406,12 +473,22 @@ export const StockTransferPage: React.FC = () => {
                 onChange={(e) => handleItemSelect(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
               >
-                {storeItems.map((i) => (
-                  <option key={i.id} value={i.itemCode}>
-                    {i.itemName} ({i.itemCode})
+                {availableProducts.map((i, idx) => (
+                  <option key={`${i.itemCode}-${idx}`} value={i.itemCode}>
+                    {i.itemName} ({i.itemCode}) — Batch: {i.batchNumber} | Available: {i.currentStock} units {i.currentStock <= 0 ? '(OUT OF STOCK)' : ''}
                   </option>
                 ))}
               </select>
+              {(() => {
+                const currentProd = availableProducts.find((i) => i.itemCode === formData.itemCode);
+                const stock = currentProd?.currentStock ?? 0;
+                return (
+                  <p className={`text-[11px] font-bold mt-1.5 flex items-center justify-between ${stock > 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    <span>Available Stock Quantity:</span>
+                    <span className="font-black text-xs bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">{stock} units</span>
+                  </p>
+                );
+              })()}
             </div>
 
             <div>
@@ -419,11 +496,22 @@ export const StockTransferPage: React.FC = () => {
               <input
                 type="number"
                 min={1}
+                max={Math.max(1, availableProducts.find((i) => i.itemCode === formData.itemCode)?.currentStock ?? 1)}
                 required
                 value={formData.quantity}
                 onChange={(e) => setFormData({ ...formData, quantity: Number(e.target.value) })}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-semibold text-slate-900 outline-none"
               />
+              {(() => {
+                const currentProd = availableProducts.find((i) => i.itemCode === formData.itemCode);
+                const stock = currentProd?.currentStock ?? 0;
+                const isExceeded = formData.quantity > stock;
+                return isExceeded ? (
+                  <p className="text-[11px] font-bold text-rose-600 mt-1">
+                    ⚠️ Quantity ({formData.quantity}) exceeds available stock ({stock} units). Only up to {stock} units can be transferred.
+                  </p>
+                ) : null;
+              })()}
             </div>
 
             <div>
@@ -450,7 +538,12 @@ export const StockTransferPage: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md shadow-blue-600/20 cursor-pointer"
+              disabled={(() => {
+                const currentProd = availableProducts.find((i) => i.itemCode === formData.itemCode);
+                const stock = currentProd?.currentStock ?? 0;
+                return stock <= 0 || formData.quantity > stock;
+              })()}
+              className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold shadow-md shadow-blue-600/20 cursor-pointer"
             >
               {selectedEntry ? 'Update Transfer' : 'Initiate Transfer'}
             </button>

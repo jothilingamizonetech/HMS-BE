@@ -47,6 +47,7 @@ class StockOutward(UUIDPKMixin, TimestampMixin, Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     issued_by: Mapped[str | None] = mapped_column(String(150), nullable=True)
     date: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str | None] = mapped_column(String(50), default="Pending Approval")
     branch: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
 

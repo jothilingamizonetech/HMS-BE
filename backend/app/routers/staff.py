@@ -1,13 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import select
+from sqlalchemy import select, or_, func
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 
 from app.core.database import get_db
+from app.core.security import hash_password
 from app.deps import get_current_active_user, require_permission
 from app.models.staff import StaffLeave, Consultation, IPDRecord
+from app.models.user import User
 
 router = APIRouter(tags=["Staff & Consultations"])
 _auth = Depends(get_current_active_user)
@@ -60,6 +62,67 @@ def _row(r) -> dict:
         "created_at": "createdAt", "updated_at": "updatedAt",
     }
     return {mapping.get(k, k): v for k, v in d.items()}
+
+
+# ── Nurses List ───────────────────────────────────────────────
+
+@router.get("/staff/nurses")
+def list_nurses(
+    branch: str | None = Query(None),
+    db: Session = Depends(get_db),
+    _=_auth,
+):
+    stmt = select(User).where(func.lower(User.role) == "nurse", User.status == "Active")
+    if branch and branch.lower() != "all":
+        stmt = stmt.where(
+            or_(
+                func.lower(User.branch) == branch.lower(),
+                User.branch.is_(None),
+                User.branch == "",
+            )
+        )
+    nurses = list(db.scalars(stmt.order_by(User.name.asc())).all())
+
+    # If no nurses exist for this branch, ensure standard active nurse accounts exist in DB
+    if not nurses:
+        all_nurses = list(db.scalars(select(User).where(func.lower(User.role) == "nurse")).all())
+        if not all_nurses:
+            default_nurses_data = [
+                ("Nurse Anjali Rao", "anjali.rao@hospital.com", "ICU Ward"),
+                ("Nurse Sunita Verma", "sunita.verma@hospital.com", "General Ward"),
+                ("Nurse Priya Sharma", "priya.sharma@hospital.com", "Deluxe Ward"),
+                ("Nurse Kavita Nair", "kavita.nair@hospital.com", "Surgical Ward"),
+                ("Nurse Meena Kumari", "meena.kumari@hospital.com", "Emergency"),
+                ("Nurse Sneha Patel", "sneha.patel@hospital.com", "Pediatric Ward"),
+            ]
+            for n_name, n_email, n_ward in default_nurses_data:
+                nu = User(
+                    name=n_name,
+                    email=n_email,
+                    hashed_password=hash_password("nurse123"),
+                    role="nurse",
+                    department="Nursing",
+                    assigned_ward=n_ward,
+                    branch=branch or "Main Branch",
+                    status="Active",
+                    is_active=True,
+                )
+                db.add(nu)
+            db.commit()
+            nurses = list(db.scalars(stmt.order_by(User.name.asc())).all())
+
+    return [
+        {
+            "id": n.id,
+            "name": n.name,
+            "email": n.email,
+            "department": n.department,
+            "assignedWard": n.assigned_ward,
+            "branch": n.branch,
+            "phone": n.phone,
+        }
+        for n in nurses
+    ]
 
 
 # ── Staff Leave ───────────────────────────────────────────────

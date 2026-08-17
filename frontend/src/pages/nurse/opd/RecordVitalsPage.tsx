@@ -20,6 +20,7 @@ import { VitalSign } from '../../../types/nurse';
 import { Patient } from '../../../types/hms';
 import { useNurse } from '../../../context/NurseContext';
 import { useHMS } from '../../../context/HMSContext';
+import { useAuth } from '../../../context/AuthContext';
 import { PatientSearch } from '../../../components/nurse/PatientSearch';
 import { PatientInfoCard } from '../../../components/nurse/PatientInfoCard';
 import { Modal } from '../../../components/common/Modal';
@@ -28,9 +29,17 @@ import { NurseBranchSelector } from '../../../components/nurse/NurseBranchSelect
 export const RecordVitalsPage: React.FC = () => {
   const { vitals, addVitalSign, updateVitalSign, deleteVitalSign, selectedBranch } = useNurse();
   const { patients, doctors, addToast } = useHMS();
+  const { user } = useAuth();
 
   // Active Selected Patient from HMS Database
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(patients[0] || null);
+  const [editingVitalId, setEditingVitalId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!selectedPatient && patients.length > 0) {
+      setSelectedPatient(patients[0]);
+    }
+  }, [patients, selectedPatient]);
 
   // Editable Vitals Form state for the active patient
   const [vitalsForm, setVitalsForm] = useState({
@@ -45,6 +54,44 @@ export const RecordVitalsPage: React.FC = () => {
     painScale: 1,
     remarks: '',
   });
+
+  // When selectedPatient changes, load their existing vital record if present in DB/vitals list
+  React.useEffect(() => {
+    if (selectedPatient) {
+      const existing = vitals.find(
+        (v) => (v.patientUhid || '').toLowerCase().trim() === (selectedPatient.uhid || '').toLowerCase().trim()
+      );
+      if (existing) {
+        setEditingVitalId(existing.id);
+        setVitalsForm({
+          height: existing.height ?? 170,
+          weight: existing.weight ?? 70,
+          temperature: existing.temperature ?? 98.6,
+          bloodPressure: existing.bloodPressure || '120/80',
+          pulseRate: existing.pulseRate ?? 72,
+          respiratoryRate: existing.respiratoryRate ?? 16,
+          spO2: existing.spO2 ?? 98,
+          bloodSugar: existing.bloodSugar ?? 110,
+          painScale: existing.painScale ?? 1,
+          remarks: existing.remarks || '',
+        });
+      } else {
+        setEditingVitalId(null);
+        setVitalsForm({
+          height: 170,
+          weight: 70,
+          temperature: 98.6,
+          bloodPressure: '120/80',
+          pulseRate: 72,
+          respiratoryRate: 16,
+          spO2: 98,
+          bloodSugar: 110,
+          painScale: 1,
+          remarks: '',
+        });
+      }
+    }
+  }, [selectedPatient, vitals]);
 
   // Table Search & Filter state
   const [tableSearch, setTableSearch] = useState('');
@@ -61,15 +108,16 @@ export const RecordVitalsPage: React.FC = () => {
   // Handle Patient selection from search
   const handleSelectPatient = (patient: Patient) => {
     setSelectedPatient(patient);
-    addToast('info', 'Patient Loaded', `Loaded read-only profile for ${patient.firstName} ${patient.lastName}`);
+    addToast('info', 'Patient Loaded', `Loaded vitals record for ${patient.firstName} ${patient.lastName}`);
   };
 
   const handleClearPatient = () => {
     setSelectedPatient(null);
+    setEditingVitalId(null);
   };
 
   // Submit Vitals Form
-  const handleSaveVitals = (e: React.FormEvent) => {
+  const handleSaveVitals = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!selectedPatient) {
@@ -96,29 +144,49 @@ export const RecordVitalsPage: React.FC = () => {
 
     const doctor = doctors[0] || { id: 'doc-1', name: 'Dr. Vikram Malhotra', department: 'Cardiology' };
 
-    addVitalSign({
-      patientUhid: selectedPatient.uhid,
-      patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
-      age: selectedPatient.age,
-      gender: selectedPatient.gender,
-      doctorId: doctor.id,
-      doctorName: doctor.name,
-      department: doctor.department,
-      height: vitalsForm.height,
-      weight: vitalsForm.weight,
-      temperature: vitalsForm.temperature,
-      bloodPressure: vitalsForm.bloodPressure,
-      pulseRate: vitalsForm.pulseRate,
-      respiratoryRate: vitalsForm.respiratoryRate,
-      spO2: vitalsForm.spO2,
-      bloodSugar: vitalsForm.bloodSugar,
-      painScale: vitalsForm.painScale,
-      remarks: vitalsForm.remarks,
-      recordedBy: 'Nurse Anjali Rao',
-      date: new Date().toISOString().split('T')[0],
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      branch: selectedBranch !== 'All' ? selectedBranch : selectedPatient.branch || 'Main Branch',
-    });
+    const currentBranch = selectedBranch !== 'All' ? selectedBranch : selectedPatient.branch || user?.branch || 'Main Branch';
+
+    if (editingVitalId) {
+      await updateVitalSign(editingVitalId, {
+        height: vitalsForm.height,
+        weight: vitalsForm.weight,
+        temperature: vitalsForm.temperature,
+        bloodPressure: vitalsForm.bloodPressure,
+        pulseRate: vitalsForm.pulseRate,
+        respiratoryRate: vitalsForm.respiratoryRate,
+        spO2: vitalsForm.spO2,
+        bloodSugar: vitalsForm.bloodSugar,
+        painScale: vitalsForm.painScale,
+        remarks: vitalsForm.remarks,
+        branch: currentBranch,
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      });
+    } else {
+      await addVitalSign({
+        patientUhid: selectedPatient.uhid,
+        patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
+        age: selectedPatient.age,
+        gender: selectedPatient.gender,
+        doctorId: doctor.id,
+        doctorName: doctor.name,
+        department: doctor.department,
+        height: vitalsForm.height,
+        weight: vitalsForm.weight,
+        temperature: vitalsForm.temperature,
+        bloodPressure: vitalsForm.bloodPressure,
+        pulseRate: vitalsForm.pulseRate,
+        respiratoryRate: vitalsForm.respiratoryRate,
+        spO2: vitalsForm.spO2,
+        bloodSugar: vitalsForm.bloodSugar,
+        painScale: vitalsForm.painScale,
+        remarks: vitalsForm.remarks,
+        recordedBy: user?.name ? `Nurse (${user.name})` : 'Nurse Anjali Rao',
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        branch: currentBranch,
+      });
+    }
 
     // Reset editable fields
     setVitalsForm({
@@ -138,12 +206,22 @@ export const RecordVitalsPage: React.FC = () => {
   // Filtered Vitals Table
   const filteredVitals = useMemo(() => {
     return vitals.filter((v) => {
+      const pName = v.patientName || '';
+      const pUhid = v.patientUhid || '';
+      const dName = v.doctorName || '';
       const matchesSearch =
-        v.patientName.toLowerCase().includes(tableSearch.toLowerCase()) ||
-        v.patientUhid.toLowerCase().includes(tableSearch.toLowerCase()) ||
-        v.doctorName.toLowerCase().includes(tableSearch.toLowerCase());
-      const matchesDoctor = selectedDoctorFilter === 'All' || v.doctorName === selectedDoctorFilter;
-      const matchesBranch = selectedBranch === 'All' || !v.branch || v.branch === selectedBranch;
+        pName.toLowerCase().includes(tableSearch.toLowerCase()) ||
+        pUhid.toLowerCase().includes(tableSearch.toLowerCase()) ||
+        dName.toLowerCase().includes(tableSearch.toLowerCase());
+      const matchesDoctor = selectedDoctorFilter === 'All' || dName === selectedDoctorFilter;
+      const activeBr = selectedBranch || 'All';
+      const matchesBranch =
+        activeBr === 'All' ||
+        !v.branch ||
+        v.branch === 'Main Branch' ||
+        v.branch === activeBr ||
+        v.branch.toLowerCase().includes(activeBr.toLowerCase().replace(/branch|hospital|cauvery|care/gi, '').trim()) ||
+        activeBr.toLowerCase().includes(v.branch.toLowerCase().replace(/branch|hospital|cauvery|care/gi, '').trim());
       return matchesSearch && matchesDoctor && matchesBranch;
     });
   }, [vitals, tableSearch, selectedDoctorFilter, selectedBranch]);
@@ -391,8 +469,8 @@ export const RecordVitalsPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {paginatedVitals.length > 0 ? (
-                paginatedVitals.map((v) => (
-                  <tr key={v.id} className="hover:bg-slate-50/70 transition-colors">
+                paginatedVitals.map((v, idx) => (
+                  <tr key={`${v.id}-${idx}`} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-3.5 px-4">
                       <p className="font-bold text-slate-900">{v.patientName}</p>
                       <p className="text-[10px] text-blue-600 font-mono font-semibold">{v.patientUhid}</p>
@@ -406,6 +484,31 @@ export const RecordVitalsPage: React.FC = () => {
                     <td className="py-3.5 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
                         <button
+                          title="Edit Vitals Record"
+                          onClick={() => {
+                            const p = patients.find((pat) => pat.uhid === v.patientUhid);
+                            if (p) setSelectedPatient(p);
+                            setEditingVitalId(v.id);
+                            setVitalsForm({
+                              height: v.height ?? 170,
+                              weight: v.weight ?? 70,
+                              temperature: v.temperature ?? 98.6,
+                              bloodPressure: v.bloodPressure || '120/80',
+                              pulseRate: v.pulseRate ?? 72,
+                              respiratoryRate: v.respiratoryRate ?? 16,
+                              spO2: v.spO2 ?? 98,
+                              bloodSugar: v.bloodSugar ?? 110,
+                              painScale: v.painScale ?? 1,
+                              remarks: v.remarks || '',
+                            });
+                            window.scrollTo({ top: 150, behavior: 'smooth' });
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 cursor-pointer"
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          title="View Details"
                           onClick={() => {
                             setSelectedVitalRecord(v);
                             setIsViewModalOpen(true);

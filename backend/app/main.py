@@ -7,6 +7,7 @@ from app.core.database import Base, engine
 import app.models  # noqa: F401 - ensures all models are registered on Base.metadata
 from app.seed.super_admin import seed_super_admin
 
+# Main Application Entry Point - HMS Backend
 from app.routers import (
     auth,
     patients,
@@ -72,6 +73,8 @@ async def lifespan(app: FastAPI):
             for tbl in ['appointments', 'walkin_tokens', 'queue_items', 'doctors', 'patients', 'ipd_admissions']:
                 conn.execute(sa.text(f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS branch VARCHAR(200)"))
 
+            conn.execute(sa.text("ALTER TABLE ipd_admissions ADD COLUMN IF NOT EXISTS attending_nurse VARCHAR(150)"))
+
             # Branch columns for pharmacy, lab, and store tables
             for tbl in [
                 'pharmacy_batches', 'pharmacy_purchases', 'prescriptions',
@@ -114,6 +117,7 @@ async def lifespan(app: FastAPI):
                 ('issued_to_person', 'VARCHAR(150)'),
                 ('batch_number', 'VARCHAR(100)'),
                 ('issued_by', 'VARCHAR(150)'),
+                ('status', "VARCHAR(50) DEFAULT 'Pending Approval'"),
                 ('reason', 'TEXT'),
             ]:
                 conn.execute(sa.text(f"ALTER TABLE stock_outward ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
@@ -123,6 +127,14 @@ async def lifespan(app: FastAPI):
                 ('reason', 'TEXT'),
             ]:
                 conn.execute(sa.text(f"ALTER TABLE stock_adjustment ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+
+            for col_name, col_type in [
+                ('generic_composition', 'VARCHAR(250)'),
+                ('strength', 'VARCHAR(100)'),
+                ('dosage_form', 'VARCHAR(100)'),
+            ]:
+                conn.execute(sa.text(f"ALTER TABLE item_master ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
+                conn.execute(sa.text(f"ALTER TABLE medicines ADD COLUMN IF NOT EXISTS {col_name} {col_type}"))
 
 
 
@@ -150,6 +162,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description="Backend API for the Hospital Management System (Super Admin + Clinical + Reception + Store/Inventory modules).",
@@ -159,18 +174,24 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:8000",
-    ] + settings.cors_origins_list,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Allow-Methods": "*",
+        },
+    )
 
 
 @app.get("/", tags=["Health"])

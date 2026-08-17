@@ -15,6 +15,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    conn = op.get_bind()
+    is_sqlite = conn.dialect.name == 'sqlite'
+
+    def add_col_safe(table_name: str, col_name: str, col_type: str) -> None:
+        if is_sqlite:
+            insp = sa.inspect(conn)
+            columns = [c['name'] for c in insp.get_columns(table_name)]
+            if col_name not in columns:
+                op.execute(f"ALTER TABLE {table_name} ADD COLUMN {col_name} {col_type}")
+        else:
+            try:
+                with conn.begin_nested():
+                    op.execute(f"ALTER TABLE {table_name} ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+            except Exception:
+                pass
+
     # 1. Update hospital_profiles table
     for col_name, col_type in [
         ('logo', 'TEXT'),
@@ -25,7 +41,7 @@ def upgrade() -> None:
         ('established_year', 'VARCHAR(20)'),
         ('accreditation', 'VARCHAR(200)'),
     ]:
-        op.execute(f"ALTER TABLE hospital_profiles ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+        add_col_safe('hospital_profiles', col_name, col_type)
 
     # 2. Update notifications table
     for col_name, col_type in [
@@ -38,7 +54,7 @@ def upgrade() -> None:
         ('priority', 'VARCHAR(20)'),
         ('status', 'VARCHAR(20)'),
     ]:
-        op.execute(f"ALTER TABLE notifications ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+        add_col_safe('notifications', col_name, col_type)
 
     # 3. Update users table
     for col_name, col_type in [
@@ -48,7 +64,7 @@ def upgrade() -> None:
         ('phone', 'VARCHAR(20)'),
         ('last_login', 'VARCHAR(50)'),
     ]:
-        op.execute(f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+        add_col_safe('users', col_name, col_type)
 
 
 def downgrade() -> None:

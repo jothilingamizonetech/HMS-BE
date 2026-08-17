@@ -22,7 +22,7 @@ import {
 
 export const DoctorReviewPage: React.FC = () => {
   const { labReports, labResults, doctorReviewReport } = useLab();
-  const { addToast } = useHMS();
+  const { addToast, patients } = useHMS();
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -78,14 +78,17 @@ export const DoctorReviewPage: React.FC = () => {
 
   const handleApprove = (rep: LabReportItem) => {
     doctorReviewReport(rep.id, 'Approved', 'Approved by Consultant Pathologist.');
+    addToast('success', 'Report Approved', `Report ${rep.reportNumber} approved & status updated to Approved.`);
   };
 
   const handleReject = (rep: LabReportItem) => {
     doctorReviewReport(rep.id, 'Rejected', 'Report rejected due to parameter mismatch.');
+    addToast('error', 'Report Rejected', `Report ${rep.reportNumber} returned to lab technician for review.`);
   };
 
   const handleReTest = (rep: LabReportItem) => {
     doctorReviewReport(rep.id, 'Re-Test Requested', 'Re-test requested on fresh specimen.');
+    addToast('warning', 'Re-Test Requested', `Specimen re-test requested for ${rep.patientName}.`);
   };
 
   const handleSendToDoctor = (rep: LabReportItem) => {
@@ -216,13 +219,27 @@ export const DoctorReviewPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {paginatedReports.length > 0 ? (
-                paginatedReports.map((rep) => (
-                  <tr key={rep.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-3 px-4 font-bold text-blue-600 font-mono whitespace-nowrap">{rep.reportNumber}</td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <p className="font-bold text-slate-900">{rep.patientName}</p>
-                      <p className="text-[10px] text-blue-600 font-semibold">{rep.patientUhid}</p>
-                    </td>
+                paginatedReports.map((rep) => {
+                  const patMatch = patients?.find(
+                    (p) => p.uhid.toLowerCase().trim() === rep.patientUhid.toLowerCase().trim() || p.id === rep.patientUhid
+                  );
+                  const age = patMatch?.age || rep.patientAge || 30;
+                  const gender = patMatch?.gender || rep.patientGender || 'Male';
+                  const bloodGroup = patMatch?.bloodGroup || 'O+';
+
+                  return (
+                    <tr key={rep.id} className="hover:bg-slate-50/70 transition-colors">
+                      <td className="py-3 px-4 font-bold text-blue-600 font-mono whitespace-nowrap">{rep.reportNumber}</td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <p className="font-bold text-slate-900">{rep.patientName}</p>
+                        <div className="flex items-center gap-1.5 text-[10px] font-semibold text-slate-500 mt-0.5">
+                          <span className="text-blue-600 font-bold">{rep.patientUhid}</span>
+                          <span>•</span>
+                          <span>{age} Yrs / {gender}</span>
+                          <span>•</span>
+                          <span className="text-rose-600 font-bold bg-rose-50 px-1.5 py-0.2 rounded border border-rose-100">{bloodGroup}</span>
+                        </div>
+                      </td>
                     <td className="py-3 px-4 font-semibold text-slate-800 whitespace-nowrap">{rep.doctorName}</td>
                     <td className="py-3 px-4 text-slate-600 whitespace-nowrap">{rep.department}</td>
                     <td className="py-3 px-4 max-w-[200px]" title={rep.tests.join(', ')}>
@@ -263,17 +280,18 @@ export const DoctorReviewPage: React.FC = () => {
                         <span className="text-slate-400 italic">No doctor reply yet</span>
                       )}
                     </td>
-                    <td className="py-3 px-4 text-center whitespace-nowrap">
+                    <td className="py-3 px-4 text-right whitespace-nowrap">
                       <button
                         onClick={() => handleOpenReviewModal(rep)}
-                        title="View Report Details"
-                        className="p-2 rounded-xl text-slate-600 bg-slate-100 hover:bg-slate-200 hover:text-slate-900 transition-colors cursor-pointer inline-flex items-center justify-center"
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ml-auto"
                       >
-                        <Eye className="w-4 h-4" />
+                        <FileCheck2 className="w-3.5 h-3.5" />
+                        <span>Review & Approve</span>
                       </button>
                     </td>
                   </tr>
-                ))
+                );
+              })
               ) : (
                 <tr>
                   <td colSpan={9} className="py-8 text-center text-slate-400">
@@ -334,11 +352,28 @@ export const DoctorReviewPage: React.FC = () => {
             </div>
 
             <div className="space-y-4 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-                <p className="font-bold text-slate-900">{activeReport.patientName} ({activeReport.patientUhid})</p>
-                <p className="text-slate-600">Referred Doctor: {activeReport.doctorName} • Dept: {activeReport.department}</p>
-                <p className="text-slate-500">Report Date: {activeReport.generatedDate}</p>
-              </div>
+              {(() => {
+                const activePat = patients?.find(
+                  (p) => p.uhid.toLowerCase().trim() === activeReport.patientUhid.toLowerCase().trim() || p.id === activeReport.patientUhid
+                );
+                const activeAge = activePat?.age || activeReport.patientAge || 30;
+                const activeGender = activePat?.gender || activeReport.patientGender || 'Male';
+                const activeBlood = activePat?.bloodGroup || 'O+';
+                return (
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-slate-900 text-sm">{activeReport.patientName}</p>
+                      <span className="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded-md border border-rose-100 text-xs">
+                        Blood Group: {activeBlood}
+                      </span>
+                    </div>
+                    <p className="text-slate-600">
+                      <span className="text-blue-600 font-bold">{activeReport.patientUhid}</span> • {activeAge} Yrs / {activeGender} • Doctor: {activeReport.doctorName} ({activeReport.department})
+                    </p>
+                    <p className="text-slate-500 text-[11px]">Report Date: {activeReport.generatedDate}</p>
+                  </div>
+                );
+              })()}
 
               {/* Observed Results Table */}
               <div className="space-y-2">

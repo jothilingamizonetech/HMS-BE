@@ -98,8 +98,18 @@ export const DirectSalesPOSPage: React.FC = () => {
   });
 
   const handleAddToCart = (m: Medicine) => {
+    const availableStock = m.currentStock ?? 0;
+    if (availableStock <= 0) {
+      addToast('error', 'Item Out of Stock', `${m.name} is currently out of stock (0 available).`);
+      return;
+    }
     const existingIndex = cart.findIndex((item) => item.medicineId === m.id);
     if (existingIndex > -1) {
+      const currentCartQty = cart[existingIndex].quantity;
+      if (currentCartQty + 1 > availableStock) {
+        addToast('warning', 'Stock Limit Reached', `Cannot add more than available stock (${availableStock} units) for ${m.name}.`);
+        return;
+      }
       const updated = [...cart];
       updated[existingIndex].quantity += 1;
       updated[existingIndex].total = updated[existingIndex].quantity * updated[existingIndex].unitPrice;
@@ -121,11 +131,21 @@ export const DirectSalesPOSPage: React.FC = () => {
   };
 
   const handleUpdateQty = (id: string, delta: number) => {
+    const cartItem = cart.find((item) => item.id === id);
+    if (!cartItem) return;
+    const med = medicines.find((m) => m.id === cartItem.medicineId);
+    const availableStock = med?.currentStock ?? 999;
+
+    if (delta > 0 && cartItem.quantity + delta > availableStock) {
+      addToast('warning', 'Stock Limit Reached', `Cannot increase beyond available stock (${availableStock} units).`);
+      return;
+    }
+
     setCart((prev) =>
       prev
         .map((item) => {
           if (item.id === id) {
-            const newQty = Math.max(1, item.quantity + delta);
+            const newQty = Math.max(1, Math.min(availableStock, item.quantity + delta));
             return {
               ...item,
               quantity: newQty,
@@ -316,7 +336,9 @@ export const DirectSalesPOSPage: React.FC = () => {
                       <span className="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-full border border-cyan-100">
                         {m.code}
                       </span>
-                      <span className="text-[10px] font-bold text-slate-500">{m.category}</span>
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${ (m.currentStock || 0) > 0 ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-rose-700 bg-rose-50 border border-rose-200' }`}>
+                        Available: {m.currentStock || 0} units
+                      </span>
                     </div>
 
                     <h4 className="text-xs font-bold text-slate-900 mt-1.5 group-hover:text-cyan-700 transition-colors">

@@ -28,6 +28,8 @@ interface DoctorProfile {
 }
 
 interface DashboardMetrics {
+  overallPatientsAttended: number;
+  totalConsultationsAttended: number;
   todayPatients: number;
   todayAppointments: number;
   pendingFollowUps: number;
@@ -142,6 +144,8 @@ const DEFAULT_PROFILE: DoctorProfile = {
 };
 
 const DEFAULT_METRICS: DashboardMetrics = {
+  overallPatientsAttended: 0,
+  totalConsultationsAttended: 0,
   todayPatients: 0,
   todayAppointments: 0,
   pendingFollowUps: 0,
@@ -149,7 +153,7 @@ const DEFAULT_METRICS: DashboardMetrics = {
   criticalPatients: 0,
   ipdPatients: 0,
   upcomingAppointments: 0,
-  avgConsultationTime: 0,
+  avgConsultationTime: 15,
 };
 
 const SCHEDULE: ScheduleItem[] = [];
@@ -368,7 +372,13 @@ export const DoctorOverview: React.FC = () => {
 
         const todaysAppointments = myAppointments.filter((a) => isTodayDate(a.date));
 
+        const overallPatientsSet = new Set(myAppointments.map((a) => a.patientUhid || a.patientName).filter(Boolean));
+        const overallCount = overallPatientsSet.size > 0 ? overallPatientsSet.size : myAppointments.length;
+        const totalConsultations = myAppointments.length;
+
         setMetrics({
+          overallPatientsAttended: overallCount,
+          totalConsultationsAttended: totalConsultations,
           todayPatients: new Set(todaysAppointments.map((a) => a.patientUhid || a.patientName)).size,
           todayAppointments: todaysAppointments.length,
           pendingFollowUps: myAppointments.filter((a) => a.status === 'Scheduled' || a.status === 'Confirmed' || a.status === 'Waiting').length,
@@ -376,7 +386,7 @@ export const DoctorOverview: React.FC = () => {
           criticalPatients: 0,
           ipdPatients: 0,
           upcomingAppointments: myAppointments.filter((a) => !isTodayDate(a.date) && a.status !== 'Cancelled' && a.status !== 'Completed').length,
-          avgConsultationTime: DEFAULT_METRICS.avgConsultationTime,
+          avgConsultationTime: 15,
         });
 
         const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -387,26 +397,29 @@ export const DoctorOverview: React.FC = () => {
         }));
         setWeeklyChart(dynamicWeekly);
 
-        const recentMapped: DoctorPatient[] = myAppointments.slice(0, 5).map((a) => {
-          const nameParts = (a.patientName || '').split(' ');
-          const firstName = nameParts[0] || '';
-          const lastName = nameParts.slice(1).join(' ') || '';
-          return {
-            id: a.patientUhid || a.id,
-            name: a.patientName,
-            uhid: a.patientUhid,
-            firstName,
-            lastName,
-            age: 35,
-            gender: 'Male',
-            phone: a.patientMobile,
-            lastVisit: a.date,
-            status: a.status as any,
-            condition: 'Stable',
-            bloodGroup: 'O+',
-          };
+        const uniqueMap = new Map<string, DoctorPatient>();
+        myAppointments.forEach((a) => {
+          const key = a.patientUhid || a.patientName || a.id;
+          if (!key) return;
+          if (!uniqueMap.has(key)) {
+            const nameParts = (a.patientName || 'Patient').split(' ');
+            uniqueMap.set(key, {
+              id: key,
+              name: a.patientName || 'Patient',
+              uhid: a.patientUhid || key,
+              firstName: nameParts[0] || 'Patient',
+              lastName: nameParts.slice(1).join(' ') || '',
+              age: a.patientAge || a.age || 32,
+              gender: a.patientGender || a.gender || 'Male',
+              phone: a.patientMobile || '9876543210',
+              lastVisit: a.date || 'Today',
+              status: a.status || 'Completed',
+              condition: 'Stable',
+              bloodGroup: 'O+',
+            });
+          }
         });
-        setRecentPatients(recentMapped);
+        setRecentPatients(Array.from(uniqueMap.values()));
       } catch (err) {
         console.warn('Could not load doctor profile/metrics from backend:', err);
       }
@@ -470,6 +483,16 @@ export const DoctorOverview: React.FC = () => {
     const token = localStorage.getItem('hms_token');
     const apiHost = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '').replace(/\/api\/v1$/, '');
     fetch(`${apiHost}/api/v1/notifications/${notifId}/read`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => { });
+  };
+
+  const markAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    const token = localStorage.getItem('hms_token');
+    const apiHost = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '').replace(/\/api\/v1$/, '');
+    fetch(`${apiHost}/api/v1/notifications/mark-all-read`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}` },
     }).catch(() => { });
@@ -546,28 +569,28 @@ export const DoctorOverview: React.FC = () => {
       {/* ─── KPI Metric Cards ────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
         <DashboardCard
-          title="Today's Patients"
-          value={metrics.todayPatients}
+          title="Overall Patients Attended"
+          value={metrics.overallPatientsAttended}
           icon={<Users className="w-5 h-5 text-blue-600" />}
           iconBg="bg-blue-50"
-          trend={{ value: '+12%', positive: true }}
-          subtitle="Total patients in OPD today"
+          trend={{ value: 'All-Time', positive: true }}
+          subtitle="Total unique patients attended"
           onClick={() => navigate('/doctor/consultation')}
         />
         <DashboardCard
-          title="Appointments"
-          value={metrics.todayAppointments}
-          icon={<CalendarCheck className="w-5 h-5 text-indigo-600" />}
+          title="Total Consultations"
+          value={metrics.totalConsultationsAttended}
+          icon={<Stethoscope className="w-5 h-5 text-indigo-600" />}
           iconBg="bg-indigo-50"
-          subtitle={`${metrics.upcomingAppointments} upcoming`}
+          subtitle="All consultations logged"
           onClick={() => navigate('/doctor/consultation')}
         />
         <DashboardCard
-          title="Pending Follow-Ups"
-          value={metrics.pendingFollowUps}
-          icon={<Clock className="w-5 h-5 text-amber-600" />}
-          iconBg="bg-amber-50"
-          subtitle="Patients requiring follow-up"
+          title="Today's Patients"
+          value={metrics.todayPatients}
+          icon={<UserCheck className="w-5 h-5 text-cyan-600" />}
+          iconBg="bg-cyan-50"
+          subtitle="Total patients in OPD today"
           onClick={() => navigate('/doctor/consultation')}
         />
         <DashboardCard
@@ -575,8 +598,7 @@ export const DoctorOverview: React.FC = () => {
           value={metrics.completedConsultations}
           icon={<CheckCircle2 className="w-5 h-5 text-emerald-600" />}
           iconBg="bg-emerald-50"
-          trend={{ value: '75%', positive: true }}
-          subtitle="Consultations finished"
+          subtitle="Consultations finished today"
           onClick={() => navigate('/doctor/consultation')}
         />
       </div>
@@ -693,6 +715,66 @@ export const DoctorOverview: React.FC = () => {
               <p className="text-[10px] text-slate-500 group-hover:text-emerald-100">Ward patients</p>
             </div>
           </button>
+        </div>
+      </div>
+
+      {/* ─── Overall Patients Attended Table ─────────────────────── */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-2xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">Overall Patients Attended</h3>
+            <p className="text-[11px] text-slate-500">Complete list of patients seen and consulted by {profile.name || 'Doctor'}</p>
+          </div>
+          <span className="text-xs font-bold text-blue-700 bg-blue-50 px-3 py-1 rounded-full border border-blue-100 self-start sm:self-auto">
+            Total Attended: {recentPatients.length} Patients
+          </span>
+        </div>
+
+        <div className="overflow-x-auto custom-scrollbar">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                <th className="py-3 px-4">Patient Name & UHID</th>
+                <th className="py-3 px-4">Age / Gender</th>
+                <th className="py-3 px-4">Contact</th>
+                <th className="py-3 px-4">Last Visit Date</th>
+                <th className="py-3 px-4">Status</th>
+                <th className="py-3 px-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100 text-xs">
+              {recentPatients.length > 0 ? (
+                recentPatients.map((p) => (
+                  <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3 px-4">
+                      <p className="font-bold text-slate-900">{p.name || `${p.firstName} ${p.lastName}`}</p>
+                      <p className="text-[10px] font-bold text-blue-600 font-mono">{p.uhid}</p>
+                    </td>
+                    <td className="py-3 px-4 font-semibold text-slate-700">{p.age} yrs / {p.gender}</td>
+                    <td className="py-3 px-4 text-slate-600">{p.phone || 'N/A'}</td>
+                    <td className="py-3 px-4 font-medium text-slate-800">{p.lastVisit || 'Today'}</td>
+                    <td className="py-3 px-4">
+                      <StatusBadge status={p.status || 'Completed'} />
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        onClick={() => navigate('/doctor/consultation')}
+                        className="px-3 py-1.5 rounded-xl text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors cursor-pointer"
+                      >
+                        View Consultation
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-slate-400">
+                    No patients attended yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

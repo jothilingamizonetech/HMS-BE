@@ -12,59 +12,74 @@ import {
 import { MedicationAdmin } from '../../../types/nurse';
 import { Patient } from '../../../types/hms';
 import { useNurse } from '../../../context/NurseContext';
+import { usePharmacy } from '../../../context/PharmacyContext';
 import { useHMS } from '../../../context/HMSContext';
+import { useAuth } from '../../../context/AuthContext';
 import { PatientSearch } from '../../../components/nurse/PatientSearch';
 import { PatientInfoCard } from '../../../components/nurse/PatientInfoCard';
 import { Modal } from '../../../components/common/Modal';
 import { NurseBranchSelector } from '../../../components/nurse/NurseBranchSelector';
 
 export const MedicationAdminPage: React.FC = () => {
-  const { medications, addMedicationAdmin, deleteMedicationAdmin, administerMedication, selectedBranch } = useNurse();
+  const { medications, addMedicationAdmin, updateMedicationAdmin, deleteMedicationAdmin, administerMedication, selectedBranch } = useNurse();
+  const { prescriptions: pharmacyPrescriptions } = usePharmacy();
   const { patients, doctors, addToast } = useHMS();
+  const { user } = useAuth();
 
   // Active Selected Patient from HMS Database
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(patients[0] || null);
 
-  // Derived prescribed medicines list for selected patient (Read-Only fields)
+  React.useEffect(() => {
+    if (!selectedPatient && patients.length > 0) {
+      setSelectedPatient(patients[0]);
+    }
+  }, [patients, selectedPatient]);
+
+  // Derived prescribed medicines list for selected patient fetched directly from DB
   const patientPrescriptions = useMemo(() => {
     if (!selectedPatient) return [];
-    const found = medications.filter(
-      (m) => m.patientUhid.toLowerCase() === selectedPatient.uhid.toLowerCase()
-    );
-    if (found.length > 0) return found;
+    const normUhid = selectedPatient.uhid.toLowerCase().trim();
 
-    // Fallback preset prescribed medicines for patient
-    return [
-      {
-        id: `presc-1-${selectedPatient.uhid}`,
-        patientUhid: selectedPatient.uhid,
-        patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
-        ward: selectedPatient.status === 'Admitted' ? 'ICU Ward' : 'OPD Daycare',
-        doctorName: doctors[0]?.name || 'Dr. Vikram Malhotra',
-        medicineName: 'Amlodipine 5mg',
-        dosage: '1 Tablet',
-        route: 'Oral' as const,
-        frequency: 'Once Daily (OD)' as const,
-        scheduledTime: '08:00 AM',
-        status: 'Scheduled' as const,
-        nurseName: 'Nurse Anjali Rao',
-      },
-      {
-        id: `presc-2-${selectedPatient.uhid}`,
-        patientUhid: selectedPatient.uhid,
-        patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
-        ward: selectedPatient.status === 'Admitted' ? 'ICU Ward' : 'OPD Daycare',
-        doctorName: doctors[0]?.name || 'Dr. Vikram Malhotra',
-        medicineName: 'Inj. Pantoprazole 40mg',
-        dosage: '1 Vial IV Push',
-        route: 'IV Injection' as const,
-        frequency: 'Twice Daily (BD)' as const,
-        scheduledTime: '02:00 PM',
-        status: 'Scheduled' as const,
-        nurseName: 'Nurse Anjali Rao',
-      },
-    ];
-  }, [selectedPatient, medications, doctors]);
+    // 1. Fetch medication administration records stored for patient in DB
+    const nurseMeds = medications.filter(
+      (m) => m.patientUhid && m.patientUhid.toLowerCase().trim() === normUhid
+    );
+
+    // 2. Fetch doctor prescription records stored in DB (Pharmacy Context)
+    const doctorPrescriptionMeds: MedicationAdmin[] = [];
+    if (pharmacyPrescriptions && Array.isArray(pharmacyPrescriptions)) {
+      const patientRxList = pharmacyPrescriptions.filter(
+        (rx) => rx.patientUhid && rx.patientUhid.toLowerCase().trim() === normUhid
+      );
+
+      patientRxList.forEach((rx) => {
+        (rx.items || []).forEach((item, itemIdx) => {
+          const medName = item.medicineName || 'Prescribed Medicine';
+          const exists = nurseMeds.some(
+            (nm) => nm.medicineName.toLowerCase().trim() === medName.toLowerCase().trim()
+          );
+          if (!exists) {
+            doctorPrescriptionMeds.push({
+              id: `rx-${rx.id}-${item.id || itemIdx}`,
+              patientUhid: selectedPatient.uhid,
+              patientName: `${selectedPatient.firstName} ${selectedPatient.lastName}`,
+              ward: selectedPatient.status === 'Admitted' ? 'ICU Ward' : 'OPD Daycare',
+              doctorName: rx.doctorName || doctors[0]?.name || 'Dr. Attending',
+              medicineName: medName,
+              dosage: item.dosage || '1 Tablet',
+              route: ((item as any).route as any) || 'Oral',
+              frequency: ((item as any).frequency as any) || 'Once Daily (OD)',
+              scheduledTime: '08:00 AM',
+              status: 'Scheduled',
+              nurseName: 'Staff Nurse',
+            });
+          }
+        });
+      });
+    }
+
+    return [...nurseMeds, ...doctorPrescriptionMeds];
+  }, [selectedPatient, medications, pharmacyPrescriptions, doctors]);
 
   // Selected Medicine to update status
   const [selectedMedToUpdate, setSelectedMedToUpdate] = useState<MedicationAdmin | null>(null);
@@ -72,7 +87,7 @@ export const MedicationAdminPage: React.FC = () => {
     givenTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     status: 'Given' as 'Given' | 'Missed' | 'Delayed' | 'Scheduled',
     remarks: '',
-    administeredBy: 'Nurse Anjali Rao',
+    administeredBy: user?.name || user?.username || 'Staff Nurse',
   });
 
   // Table & Modal states
@@ -102,28 +117,34 @@ export const MedicationAdminPage: React.FC = () => {
       givenTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       status: 'Given',
       remarks: med.remarks || '',
-      administeredBy: 'Nurse Anjali Rao',
+      administeredBy: user?.name || user?.username || med.nurseName || 'Staff Nurse',
     });
     setIsUpdateModalOpen(true);
   };
 
   // Submit Status Update
-  const handleSaveMedStatus = (e: React.FormEvent) => {
+  const handleSaveMedStatus = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!selectedMedToUpdate) return;
 
-    if (selectedMedToUpdate.id.startsWith('presc-')) {
-      // Add to context if new prescription record
-      addMedicationAdmin({
+    const assignedNurseName = updateForm.administeredBy || user?.name || user?.username || 'Staff Nurse';
+
+    if (selectedMedToUpdate.id.startsWith('presc-') || selectedMedToUpdate.id.startsWith('rx-')) {
+      await addMedicationAdmin({
         ...selectedMedToUpdate,
         givenTime: updateForm.givenTime,
         status: updateForm.status,
         remarks: updateForm.remarks,
-        nurseName: updateForm.administeredBy,
+        nurseName: assignedNurseName,
       });
     } else {
-      administerMedication(selectedMedToUpdate.id, updateForm.givenTime, updateForm.remarks);
+      await updateMedicationAdmin(selectedMedToUpdate.id, {
+        givenTime: updateForm.givenTime,
+        status: updateForm.status,
+        remarks: updateForm.remarks,
+        nurseName: assignedNurseName,
+      });
     }
 
     setIsUpdateModalOpen(false);
@@ -137,7 +158,14 @@ export const MedicationAdminPage: React.FC = () => {
         m.patientUhid.toLowerCase().includes(tableSearch.toLowerCase()) ||
         m.medicineName.toLowerCase().includes(tableSearch.toLowerCase()) ||
         m.doctorName.toLowerCase().includes(tableSearch.toLowerCase());
-      const matchesBranch = selectedBranch === 'All' || !m.branch || m.branch === selectedBranch;
+      const activeBr = selectedBranch || 'All';
+      const matchesBranch =
+        activeBr === 'All' ||
+        !m.branch ||
+        m.branch === 'Main Branch' ||
+        m.branch === activeBr ||
+        m.branch.toLowerCase().includes(activeBr.toLowerCase().replace(/branch|hospital|cauvery|care/gi, '').trim()) ||
+        activeBr.toLowerCase().includes(m.branch.toLowerCase().replace(/branch|hospital|cauvery|care/gi, '').trim());
       return matchesSearch && matchesBranch;
     });
   }, [medications, tableSearch, selectedBranch]);
@@ -201,53 +229,63 @@ export const MedicationAdminPage: React.FC = () => {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {patientPrescriptions.map((med) => (
-              <div
-                key={med.id}
-                className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3 relative flex flex-col justify-between"
-              >
-                {/* READ-ONLY PRESCRIBED MEDICINE DETAILS */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="font-black text-sm text-slate-900">{med.medicineName}</span>
-                    <span className="text-[10px] font-bold bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-md">
-                      {med.route}
+          {patientPrescriptions.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {patientPrescriptions.map((med, idx) => (
+                <div
+                  key={`${med.id}-${idx}`}
+                  className="p-4 rounded-xl border border-slate-200 bg-slate-50/70 space-y-3 relative flex flex-col justify-between"
+                >
+                  {/* READ-ONLY PRESCRIBED MEDICINE DETAILS */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-sm text-slate-900">{med.medicineName}</span>
+                      <span className="text-[10px] font-bold bg-cyan-100 text-cyan-700 px-2 py-0.5 rounded-md">
+                        {med.route}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                      <p><span className="font-semibold text-slate-500">Dosage:</span> <span className="font-bold text-slate-800">{med.dosage}</span></p>
+                      <p><span className="font-semibold text-slate-500">Frequency:</span> <span className="font-bold text-slate-800">{med.frequency}</span></p>
+                      <p><span className="font-semibold text-slate-500">Sched Time:</span> <span className="font-bold text-blue-600">{med.scheduledTime}</span></p>
+                      <p><span className="font-semibold text-slate-500">Prescribing Doctor:</span> <span className="font-bold text-slate-800">{med.doctorName}</span></p>
+                    </div>
+                  </div>
+
+                  {/* UPDATE MEDICATION STATUS ACTION BUTTON */}
+                  <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                        med.status === 'Given'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : 'bg-amber-100 text-amber-700'
+                      }`}
+                    >
+                      {med.status === 'Given' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                      <span>{med.status}</span>
                     </span>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
-                    <p><span className="font-semibold text-slate-500">Dosage:</span> <span className="font-bold text-slate-800">{med.dosage}</span></p>
-                    <p><span className="font-semibold text-slate-500">Frequency:</span> <span className="font-bold text-slate-800">{med.frequency}</span></p>
-                    <p><span className="font-semibold text-slate-500">Sched Time:</span> <span className="font-bold text-blue-600">{med.scheduledTime}</span></p>
-                    <p><span className="font-semibold text-slate-500">Prescribing Doctor:</span> <span className="font-bold text-slate-800">{med.doctorName}</span></p>
+                    <button
+                      onClick={() => handleOpenUpdateModal(med)}
+                      className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Update Status</span>
+                    </button>
                   </div>
                 </div>
-
-                {/* UPDATE MEDICATION STATUS ACTION BUTTON */}
-                <div className="pt-2 border-t border-slate-200 flex items-center justify-between">
-                  <span
-                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      med.status === 'Given'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-amber-100 text-amber-700'
-                    }`}
-                  >
-                    {med.status === 'Given' ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                    <span>{med.status}</span>
-                  </span>
-
-                  <button
-                    onClick={() => handleOpenUpdateModal(med)}
-                    className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Update Status</span>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="py-8 text-center bg-slate-50/80 border border-dashed border-slate-200 rounded-xl space-y-1">
+              <Pill className="w-7 h-7 text-slate-300 mx-auto mb-1" />
+              <p className="text-xs font-bold text-slate-600">No Prescribed Medicines Found in DB</p>
+              <p className="text-[11px] text-slate-400">
+                No active doctor prescriptions or nurse medication orders were found for {selectedPatient.firstName} {selectedPatient.lastName} (UHID: {selectedPatient.uhid}).
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -289,8 +327,8 @@ export const MedicationAdminPage: React.FC = () => {
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
               {paginatedMedications.length > 0 ? (
-                paginatedMedications.map((m) => (
-                  <tr key={m.id} className="hover:bg-slate-50/70 transition-colors">
+                paginatedMedications.map((m, idx) => (
+                  <tr key={`${m.id}-${idx}`} className="hover:bg-slate-50/70 transition-colors">
                     <td className="py-3.5 px-4">
                       <p className="font-bold text-slate-900">{m.patientName}</p>
                       <p className="text-[10px] text-blue-600 font-mono font-semibold">{m.patientUhid}</p>

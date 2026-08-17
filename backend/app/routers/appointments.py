@@ -62,14 +62,15 @@ def list_appointments(
     # Branch scoping: filter by explicit branch query or current user's branch (unless super_admin/admin without filter)
     target_branch = branch or (current_user.branch if role_norm not in ("super_admin", "admin") else None)
     if target_branch and target_branch.lower() != 'all':
-        stmt = stmt.where(
-            or_(
-                func.lower(Appointment.branch) == target_branch.lower(),
-                func.lower(Appointment.branch) == 'main branch',
-                Appointment.branch.is_(None),
-                Appointment.branch == ''
-            )
-        )
+        norm_sub = target_branch.lower().replace("branch", "").replace("hospital", "").replace("cauvery", "").replace("care", "").strip()
+        apt_branch_clauses = [
+            func.lower(Appointment.branch) == target_branch.lower(),
+        ]
+        if norm_sub:
+            apt_branch_clauses.append(func.lower(Appointment.branch).contains(norm_sub))
+        if target_branch.lower() in ("main branch", "main"):
+            apt_branch_clauses.extend([Appointment.branch.is_(None), Appointment.branch == ""])
+        stmt = stmt.where(or_(*apt_branch_clauses))
 
     stmt = stmt.order_by(Appointment.created_at.desc()).offset(skip).limit(limit)
     return db.scalars(stmt).all()
@@ -90,14 +91,39 @@ def book_appointment(payload: AppointmentCreate, db: Session = Depends(get_db), 
 
     # Fetch/verify or auto-create Patient details in DB with unique ID
     pat = None
-    if data.get("patient_uhid"):
-        pat = db.scalar(select(Patient).where(Patient.uhid == data["patient_uhid"]))
-    if not pat and data.get("patient_mobile"):
-        pat = db.scalar(select(Patient).where(Patient.mobile == data["patient_mobile"]))
+    target_uhid = (data.get("patient_uhid") or "").strip()
+    target_mobile = (data.get("patient_mobile") or "").strip()
+    target_name = (data.get("patient_name") or "").strip()
+
+    # 1. Check by UHID
+    if target_uhid:
+        pat = db.scalar(select(Patient).where(func.lower(Patient.uhid) == target_uhid.lower()))
+
+    # 2. Check by Mobile (exact or last 10 digits)
+    if not pat and target_mobile:
+        clean_mob = "".join(filter(str.isdigit, target_mobile))[-10:]
+        if len(clean_mob) >= 10:
+            all_pts = db.scalars(select(Patient)).all()
+            for p in all_pts:
+                p_mob = "".join(filter(str.isdigit, p.mobile or ""))[-10:]
+                if p_mob and p_mob == clean_mob:
+                    pat = p
+                    break
+        if not pat:
+            pat = db.scalar(select(Patient).where(Patient.mobile == target_mobile))
+
+    # 3. Check by Full Name
+    if not pat and target_name:
+        all_pts = db.scalars(select(Patient)).all()
+        for p in all_pts:
+            full_n = f"{p.first_name or ''} {p.last_name or ''}".strip().lower()
+            if full_n and full_n == target_name.lower():
+                pat = p
+                break
 
     if pat:
         data["patient_name"] = f"{pat.first_name} {pat.last_name}".strip()
-        data["patient_mobile"] = pat.mobile
+        data["patient_mobile"] = pat.mobile or target_mobile
         data["patient_id"] = pat.id
         data["patient_uhid"] = pat.uhid
     else:
@@ -259,6 +285,14 @@ def update_appointment(
     old_status = str(getattr(appointment.status, "value", appointment.status)).lower()
 
     apply_updates(appointment, payload)
+
+    if payload.status:
+        st_raw = str(getattr(payload.status, "value", payload.status)).strip()
+        for st_enum in AppointmentStatus:
+            if st_enum.value.lower() == st_raw.lower():
+                appointment.status = st_enum
+                break
+
     db.commit()
     db.refresh(appointment)
     log_audit(f"PUT /appointments/{appointment_id}", payload, payload.model_dump(exclude_unset=True), appointment, appointment)

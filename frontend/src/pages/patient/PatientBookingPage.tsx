@@ -448,7 +448,24 @@ export const PatientBookingPage: React.FC = () => {
     let targetUhid = existingUhid;
     let targetName = fullName;
 
-    if (patientType === 'New Patient' || !targetUhid) {
+    // Check if patient already exists by Mobile, UHID, or Full Name
+    const mobDigits = (mobile || '').replace(/\D/g, '').slice(-10);
+    const cleanName = (fullName || '').trim().toLowerCase();
+
+    const existingPatient = patients.find((p) => {
+      const pMob = (p.mobile || '').replace(/\D/g, '').slice(-10);
+      const pName = `${p.firstName || ''} ${p.lastName || ''}`.trim().toLowerCase();
+      if (existingUhid && p.uhid === existingUhid) return true;
+      if (mobDigits && pMob && mobDigits === pMob) return true;
+      if (cleanName && pName && cleanName === pName) return true;
+      return false;
+    });
+
+    if (existingPatient) {
+      targetUhid = existingPatient.uhid;
+      targetName = `${existingPatient.firstName} ${existingPatient.lastName}`.trim();
+      setExistingUhid(existingPatient.uhid);
+    } else if (patientType === 'New Patient' || !targetUhid) {
       try {
         const nameParts = (fullName || 'New Patient').trim().split(' ');
         const fName = nameParts[0] || 'Patient';
@@ -525,6 +542,7 @@ export const PatientBookingPage: React.FC = () => {
       totalAmount: 0,
       paymentStatus: 'Pending',
       status: 'Pending',
+      bookingSource: 'Online',
     } as any);
 
     setConfirmedApt(created);
@@ -847,6 +865,24 @@ export const PatientBookingPage: React.FC = () => {
                       <option value="Male">Male</option>
                       <option value="Female">Female</option>
                       <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">Blood Group *</label>
+                    <select
+                      value={bloodGroup}
+                      onChange={(e) => setBloodGroup(e.target.value)}
+                      className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                    >
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
                     </select>
                   </div>
                 </div>

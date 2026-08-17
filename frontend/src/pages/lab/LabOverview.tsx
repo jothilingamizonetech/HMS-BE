@@ -415,7 +415,7 @@ export const LabOverview: React.FC = () => {
                   <FileCheck2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900">Pending Patient Result Entry</h4>
+                  <h4 className="text-xs font-bold text-slate-900">Pending Patient OP Register</h4>
                   <p className="text-[10px] text-slate-500">Key-in test parameters for patient orders</p>
                 </div>
               </div>
@@ -427,7 +427,7 @@ export const LabOverview: React.FC = () => {
               </div>
             </div>
 
-            {/* Task 3: Pending Result Entry */}
+            {/* Task 3: Pending OP Register */}
             <div
               onClick={() => navigate('/lab/result-entry')}
               className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 hover:border-amber-300 hover:bg-amber-50/40 transition-all cursor-pointer flex items-center justify-between"
@@ -437,7 +437,7 @@ export const LabOverview: React.FC = () => {
                   <FileCheck2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-slate-900">Pending Result Entry</h4>
+                  <h4 className="text-xs font-bold text-slate-900">Pending OP Register</h4>
                   <p className="text-[10px] text-slate-500">Analyzer values waiting for manual key-in</p>
                 </div>
               </div>

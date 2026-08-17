@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 
 from app.core.database import get_db
 from app.core.logging_utils import log_audit
@@ -52,15 +52,53 @@ def get_vitals(patient_uhid: str | None = None, db: Session = Depends(get_db), _
 
 
 @router.post("/vitals", response_model=PatientVitalOut, status_code=status.HTTP_201_CREATED)
-def create_vital(payload: PatientVitalCreate, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
-    data = payload.model_dump()
-    if not data.get("note") and data.get("remarks"):
-        data["note"] = data["remarks"]
-    vital = PatientVital(**data)
+def create_vital(payload: dict, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
+    bp_sys = payload.get("bpSys") or payload.get("bp_sys") or 120
+    bp_dia = payload.get("bpDia") or payload.get("bp_dia") or 80
+    bp_str = payload.get("bloodPressure") or payload.get("blood_pressure") or f"{bp_sys}/{bp_dia}"
+
+    if bp_str and "/" in str(bp_str) and (not payload.get("bpSys") and not payload.get("bp_sys")):
+        try:
+            parts = str(bp_str).split("/")
+            bp_sys = float(parts[0])
+            bp_dia = float(parts[1])
+        except (ValueError, IndexError):
+            pass
+
+    pulse_val = payload.get("pulseRate") or payload.get("pulse_rate") or payload.get("pulse") or 72
+    resp_val = payload.get("respiratoryRate") or payload.get("respiratory_rate") or payload.get("respRate") or payload.get("resp_rate") or 18
+
+    vital = PatientVital(
+        patient_uhid=payload.get("patientUhid") or payload.get("patient_uhid") or "",
+        patient_name=payload.get("patientName") or payload.get("patient_name"),
+        age=payload.get("age"),
+        gender=payload.get("gender"),
+        doctor_id=payload.get("doctorId") or payload.get("doctor_id"),
+        doctor_name=payload.get("doctorName") or payload.get("doctor_name"),
+        department=payload.get("department"),
+        height=payload.get("height"),
+        weight=payload.get("weight"),
+        temperature=payload.get("temperature", 98.6),
+        blood_pressure=bp_str,
+        bp_sys=bp_sys,
+        bp_dia=bp_dia,
+        pulse_rate=pulse_val,
+        pulse=pulse_val,
+        respiratory_rate=resp_val,
+        resp_rate=resp_val,
+        spo2=payload.get("spO2") or payload.get("spo2") or 98,
+        blood_sugar=payload.get("bloodSugar") or payload.get("blood_sugar"),
+        pain_scale=payload.get("painScale") or payload.get("pain_scale"),
+        remarks=payload.get("remarks") or payload.get("note") or "",
+        recorded_by=payload.get("recordedBy") or payload.get("recorded_by") or "Nurse",
+        recorded_at=payload.get("recordedAt") or payload.get("recorded_at"),
+        date=payload.get("date"),
+        time=payload.get("time"),
+    )
     db.add(vital)
     db.commit()
     db.refresh(vital)
-    log_audit("POST /clinical/vitals", payload, data, vital, vital)
+    log_audit("POST /clinical/vitals", payload, payload, vital, vital)
     return vital
 
 
@@ -69,9 +107,45 @@ def update_vital(vital_id: str, payload: dict, db: Session = Depends(get_db), _=
     vital = db.get(PatientVital, vital_id)
     if not vital:
         raise HTTPException(status_code=404, detail="Vital record not found")
+
+    mapping = {
+        "patientUhid": "patient_uhid",
+        "patientName": "patient_name",
+        "doctorId": "doctor_id",
+        "doctorName": "doctor_name",
+        "bloodPressure": "blood_pressure",
+        "bpSys": "bp_sys",
+        "bpDia": "bp_dia",
+        "pulseRate": "pulse_rate",
+        "pulse": "pulse_rate",
+        "respiratoryRate": "respiratory_rate",
+        "respRate": "resp_rate",
+        "spO2": "spo2",
+        "bloodSugar": "blood_sugar",
+        "painScale": "pain_scale",
+        "recordedBy": "recorded_by",
+        "recordedAt": "recorded_at",
+    }
+
+    bp_str = payload.get("bloodPressure") or payload.get("blood_pressure")
+    if bp_str and "/" in str(bp_str):
+        try:
+            parts = str(bp_str).split("/")
+            vital.bp_sys = float(parts[0])
+            vital.bp_dia = float(parts[1])
+            vital.blood_pressure = str(bp_str)
+        except (ValueError, IndexError):
+            pass
+
     for k, v in payload.items():
-        if hasattr(vital, k):
-            setattr(vital, k, v)
+        attr_name = mapping.get(k, k)
+        if hasattr(vital, attr_name) and attr_name not in ("id", "created_at"):
+            setattr(vital, attr_name, v)
+            if attr_name == "pulse_rate":
+                vital.pulse = v
+            elif attr_name == "respiratory_rate":
+                vital.resp_rate = v
+
     db.commit()
     db.refresh(vital)
     log_audit(f"PUT /clinical/vitals/{vital_id}", payload, payload, vital, vital)
@@ -87,40 +161,48 @@ def delete_vital(vital_id: str, db: Session = Depends(get_db), _=Depends(get_cur
 
 
 # --- Nursing Notes ---
-# Ward-based data scoping for the nurse role (see CHANGELOG.md Phase 13 and
-# get_own_nurse_ward() in deps.py). A nurse with an assigned ward only sees
-# records for that ward; a nurse with no ward assigned yet (own_ward is None)
-# is NOT scoped, matching the "don't scope until there's a real key" rule
-# already used for the doctor role. Non-nurse roles are always unaffected
-# (own_ward is None for them too).
 @router.get("/nursing-notes", response_model=list[NursingNoteOut])
 def get_nursing_notes(
     patient_uhid: str | None = None,
     db: Session = Depends(get_db),
     _=Depends(get_current_active_user),
-    own_ward: str | None = Depends(get_own_nurse_ward),
 ):
     stmt = select(NursingNote).order_by(NursingNote.created_at.desc())
     if patient_uhid:
         stmt = stmt.where(NursingNote.patient_uhid == patient_uhid)
-    if own_ward:
-        stmt = stmt.where(NursingNote.ward == own_ward)
     return list(db.scalars(stmt).all())
 
 
 @router.post("/nursing-notes", response_model=NursingNoteOut, status_code=status.HTTP_201_CREATED)
-def create_nursing_note(payload: NursingNoteCreate, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
-    data = payload.model_dump()
-    if not data.get("note") and data.get("notes"):
-        data["note"] = data["notes"]
-    elif not data.get("note"):
-        data["note"] = "General Note"
-    note = NursingNote(**data)
-    db.add(note)
+def create_nursing_note(payload: dict, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
+    obs = payload.get("observation") or payload.get("note") or payload.get("notes") or ""
+    note_obj = NursingNote(
+        patient_uhid=payload.get("patientUhid") or payload.get("patient_uhid") or "",
+        patient_name=payload.get("patientName") or payload.get("patient_name"),
+        admission_id=payload.get("admissionId") or payload.get("admission_id"),
+        ward=payload.get("ward") or "General Ward",
+        diagnosis=payload.get("diagnosis") or "",
+        observation=obs,
+        symptoms=payload.get("symptoms") or "",
+        treatment_response=payload.get("treatmentResponse") or payload.get("treatment_response") or "",
+        doctor_instructions=payload.get("doctorInstructions") or payload.get("doctor_instructions") or "",
+        fluid_intake=payload.get("fluidIntake") or payload.get("fluid_intake"),
+        fluid_output=payload.get("fluidOutput") or payload.get("fluid_output"),
+        patient_condition=payload.get("patientCondition") or payload.get("patient_condition") or "Stable",
+        category=payload.get("category") or payload.get("patientCondition") or "General Note",
+        note=obs or "General Note",
+        notes=payload.get("notes") or obs,
+        nurse_name=payload.get("nurseName") or payload.get("nurse_name") or payload.get("recordedBy") or payload.get("recorded_by") or "Nurse",
+        recorded_by=payload.get("recordedBy") or payload.get("recorded_by") or "Nurse",
+        created_at_time=payload.get("createdAtTime") or payload.get("created_at_time"),
+        date=payload.get("date"),
+        time=payload.get("time"),
+    )
+    db.add(note_obj)
     db.commit()
-    db.refresh(note)
-    log_audit("POST /clinical/nursing-notes", payload, data, note, note)
-    return note
+    db.refresh(note_obj)
+    log_audit("POST /clinical/nursing-notes", payload, payload, note_obj, note_obj)
+    return note_obj
 
 
 @router.put("/nursing-notes/{note_id}", response_model=NursingNoteOut)
@@ -151,24 +233,37 @@ def get_medications(
     patient_uhid: str | None = None,
     db: Session = Depends(get_db),
     _=Depends(get_current_active_user),
-    own_ward: str | None = Depends(get_own_nurse_ward),
 ):
     stmt = select(MedicationLog).order_by(MedicationLog.created_at.desc())
     if patient_uhid:
         stmt = stmt.where(MedicationLog.patient_uhid == patient_uhid)
-    if own_ward:
-        stmt = stmt.where(MedicationLog.ward == own_ward)
     return list(db.scalars(stmt).all())
 
 
 @router.post("/medications", response_model=MedicationLogOut, status_code=status.HTTP_201_CREATED)
-def create_medication_log(payload: MedicationLogCreate, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
-    data = payload.model_dump()
-    log = MedicationLog(**data)
+def create_medication_log(payload: dict, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
+    log = MedicationLog(
+        patient_uhid=payload.get("patientUhid") or payload.get("patient_uhid") or "",
+        patient_name=payload.get("patientName") or payload.get("patient_name"),
+        admission_id=payload.get("admissionId") or payload.get("admission_id"),
+        ward=payload.get("ward") or "General Ward",
+        doctor_name=payload.get("doctorName") or payload.get("doctor_name"),
+        medicine_name=payload.get("medicineName") or payload.get("medicine_name") or "",
+        dosage=payload.get("dosage") or "1 Tablet",
+        route=payload.get("route") or "Oral",
+        frequency=payload.get("frequency") or "Once Daily (OD)",
+        scheduled_time=payload.get("scheduledTime") or payload.get("scheduled_time") or "08:00 AM",
+        administered_at=payload.get("administeredAt") or payload.get("administered_at") or payload.get("givenTime") or payload.get("given_time"),
+        given_time=payload.get("givenTime") or payload.get("given_time"),
+        status=payload.get("status") or "Given",
+        reason_if_missed=payload.get("reasonIfMissed") or payload.get("reason_if_missed"),
+        remarks=payload.get("remarks") or "",
+        nurse_name=payload.get("nurseName") or payload.get("nurse_name") or "Nurse",
+    )
     db.add(log)
     db.commit()
     db.refresh(log)
-    log_audit("POST /clinical/medications", payload, data, log, log)
+    log_audit("POST /clinical/medications", payload, payload, log, log)
     return log
 
 
@@ -176,10 +271,38 @@ def create_medication_log(payload: MedicationLogCreate, db: Session = Depends(ge
 def update_medication_log(med_id: str, payload: dict, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_edit):
     log = db.get(MedicationLog, med_id)
     if not log:
-        raise HTTPException(status_code=404, detail="Medication log not found")
+        log = MedicationLog(
+            patient_uhid=payload.get("patientUhid") or payload.get("patient_uhid") or "",
+            patient_name=payload.get("patientName") or payload.get("patient_name"),
+            admission_id=payload.get("admissionId") or payload.get("admission_id"),
+            ward=payload.get("ward") or "General Ward",
+            doctor_name=payload.get("doctorName") or payload.get("doctor_name"),
+            medicine_name=payload.get("medicineName") or payload.get("medicine_name") or "",
+            dosage=payload.get("dosage") or "1 Tablet",
+            route=payload.get("route") or "Oral",
+            frequency=payload.get("frequency") or "Once Daily (OD)",
+            scheduled_time=payload.get("scheduledTime") or payload.get("scheduled_time") or "08:00 AM",
+            administered_at=payload.get("administeredAt") or payload.get("administered_at") or payload.get("givenTime") or payload.get("given_time"),
+            given_time=payload.get("givenTime") or payload.get("given_time"),
+            status=payload.get("status") or "Given",
+            reason_if_missed=payload.get("reasonIfMissed") or payload.get("reason_if_missed"),
+            remarks=payload.get("remarks") or "",
+            nurse_name=payload.get("nurseName") or payload.get("nurse_name") or payload.get("administeredBy") or payload.get("administered_by") or "Nurse",
+        )
+        db.add(log)
+        db.commit()
+        db.refresh(log)
+        log_audit(f"POST /clinical/medications/{med_id}", payload, payload, log, log)
+        return log
+
     for k, v in payload.items():
         if hasattr(log, k):
             setattr(log, k, v)
+        elif k == "givenTime":
+            setattr(log, "given_time", v)
+            setattr(log, "administered_at", v)
+        elif k == "nurseName" or k == "administeredBy":
+            setattr(log, "nurse_name", v)
     db.commit()
     db.refresh(log)
     log_audit(f"PUT /clinical/medications/{med_id}", payload, payload, log, log)
@@ -206,21 +329,42 @@ def get_ward_transfers(
     if patient_uhid:
         stmt = stmt.where(WardTransfer.patient_uhid == patient_uhid)
     if own_ward:
-        # A transfer is relevant to a ward-assigned nurse if the patient is
-        # currently in their ward OR is being transferred into it (both
-        # directions of the same transfer record matter to that nurse).
-        stmt = stmt.where(or_(WardTransfer.current_ward == own_ward, WardTransfer.new_ward == own_ward))
+        stmt = stmt.where(
+            or_(
+                WardTransfer.current_ward == own_ward,
+                WardTransfer.new_ward == own_ward,
+                WardTransfer.current_ward.is_(None),
+                WardTransfer.new_ward.is_(None),
+                func.lower(WardTransfer.current_ward).contains(own_ward.lower()),
+                func.lower(WardTransfer.new_ward).contains(own_ward.lower()),
+            )
+        )
     return list(db.scalars(stmt).all())
 
 
 @router.post("/ward-transfers", response_model=WardTransferOut, status_code=status.HTTP_201_CREATED)
-def create_ward_transfer(payload: WardTransferCreate, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
-    data = payload.model_dump()
-    transfer = WardTransfer(**data)
+def create_ward_transfer(payload: dict, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
+    transfer = WardTransfer(
+        transfer_id=payload.get("transferId") or payload.get("transfer_id") or f"TRF-{db.query(WardTransfer).count() + 1}",
+        patient_uhid=payload.get("patientUhid") or payload.get("patient_uhid") or "",
+        patient_name=payload.get("patientName") or payload.get("patient_name") or "",
+        current_ward=payload.get("currentWard") or payload.get("current_ward") or "General Ward",
+        current_bed=payload.get("currentBed") or payload.get("current_bed") or "",
+        new_ward=payload.get("newWard") or payload.get("new_ward") or "ICU Ward",
+        new_bed=payload.get("newBed") or payload.get("new_bed") or "",
+        transfer_reason=payload.get("transferReason") or payload.get("transfer_reason") or "",
+        transfer_date=payload.get("transferDate") or payload.get("transfer_date") or "",
+        transfer_time=payload.get("transferTime") or payload.get("transfer_time") or "",
+        doctor_approval=payload.get("doctorApproval") or payload.get("doctor_approval") or "Approved",
+        doctor_name=payload.get("doctorName") or payload.get("doctor_name"),
+        remarks=payload.get("remarks") or "",
+        transferred_by=payload.get("transferredBy") or payload.get("transferred_by") or "Nurse",
+        status=payload.get("status") or "Completed",
+    )
     db.add(transfer)
     db.commit()
     db.refresh(transfer)
-    log_audit("POST /clinical/ward-transfers", payload, data, transfer, transfer)
+    log_audit("POST /clinical/ward-transfers", payload, payload, transfer, transfer)
     return transfer
 
 
@@ -244,3 +388,4 @@ def delete_ward_transfer(transfer_id: str, db: Session = Depends(get_db), _=Depe
     if transfer:
         db.delete(transfer)
         db.commit()
+

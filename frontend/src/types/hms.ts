@@ -67,6 +67,8 @@ export interface Patient {
   // Status
   status: 'Active' | 'Admitted' | 'Discharged';
   registrationDate: string;
+  createdDate?: string;
+  createdAt?: string;
   branch?: string;
 }
 
@@ -155,6 +157,8 @@ export interface Appointment {
   dob?: string;
   age?: number;
   gender?: 'Male' | 'Female' | 'Other';
+  patientAge?: number;
+  patientGender?: string;
   bloodGroup?: string;
   address?: string;
   city?: string;
@@ -242,6 +246,7 @@ export interface IPDAdmission {
   insuranceProvider?: string;
   insuranceNumber?: string;
   status: 'Admitted' | 'Discharged' | 'Transferred';
+  branch?: string;
 }
 
 export interface Notification {
@@ -281,7 +286,7 @@ export type CollectionStatus = 'Pending' | 'Collected' | 'Recollect' | 'Rejected
 export type ProcessingStatus = 'Pending' | 'In Processing' | 'Completed' | 'QC Pending' | 'QC Passed';
 export type ResultFlag = 'Normal' | 'High' | 'Low' | 'Critical';
 export type ResultStatus = 'Pending' | 'Completed' | 'Critical' | 'Verified';
-export type ReportStatus = 'Draft' | 'Generated' | 'Printed' | 'Emailed';
+export type ReportStatus = 'Draft' | 'Generated' | 'Printed' | 'Emailed' | 'Approved' | 'Released';
 export type DoctorReviewStatus = 'Pending Review' | 'Approved' | 'Rejected' | 'Re-Test Requested';
 
 export interface LabTestMaster {
@@ -296,6 +301,7 @@ export interface LabTestMaster {
   method: string;
   machine: string;
   normalRange: string;
+  referenceRange?: string;
   criticalRange: string;
   unit: string;
   tatHours: number;
@@ -429,6 +435,7 @@ export interface Medicine {
   rackLocation: string;
   status: 'Active' | 'Inactive';
   currentStock: number;
+  current_stock?: number;
   minStock: number;
   maxStock: number;
   reorderLevel: number;
@@ -485,6 +492,7 @@ export interface PurchaseEntry {
 
 export interface PrescriptionItem {
   id: string;
+  medicineId?: string;
   medicineName: string;
   batchNumber: string;
   quantity: number;
@@ -497,6 +505,8 @@ export interface PrescriptionItem {
   price: number;
   unitPrice?: number;
   dispensed: boolean;
+  route?: string;
+  frequency?: string;
 }
 
 export interface PrescriptionOrder {

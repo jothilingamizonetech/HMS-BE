@@ -505,7 +505,44 @@ def list_reports(
 
 @router.post("/reports", status_code=201)
 def create_report(payload: dict, db: Session = Depends(get_db), current_user: User = Depends(get_current_active_user), _perm=_perm_create):
-    rnum = f"LIS-REP-{datetime.now().year}-{''.join(random.choices(string.digits, k=4))}"
+    rep_num = payload.get("reportNumber")
+    uhid = payload.get("patientUhid")
+    pname = payload.get("patientName")
+
+    existing = None
+    if rep_num:
+        existing = db.scalar(select(LabReport).where(func.lower(LabReport.report_number) == rep_num.strip().lower()))
+    if not existing and uhid:
+        existing = db.scalar(select(LabReport).where(func.lower(LabReport.patient_uhid) == uhid.strip().lower()))
+    if not existing and pname:
+        existing = db.scalar(select(LabReport).where(func.lower(LabReport.patient_name) == pname.strip().lower()))
+
+    if existing:
+        if "testResults" in payload and payload["testResults"] is not None:
+            existing.test_results = payload["testResults"]
+            flag_modified(existing, "test_results")
+        if "tests" in payload and payload["tests"] is not None:
+            existing.tests = payload["tests"]
+        if "doctorComments" in payload and payload["doctorComments"] is not None:
+            existing.doctor_comments = payload["doctorComments"]
+        if "status" in payload and payload["status"] is not None:
+            existing.status = payload["status"]
+        if "doctorReviewStatus" in payload and payload["doctorReviewStatus"] is not None:
+            existing.doctor_review_status = payload["doctorReviewStatus"]
+        if "generatedDate" in payload and payload["generatedDate"] is not None:
+            existing.generated_date = payload["generatedDate"]
+        if "generatedBy" in payload and payload["generatedBy"] is not None:
+            existing.generated_by = payload["generatedBy"]
+        if "doctorName" in payload and payload["doctorName"]:
+            existing.doctor_name = payload["doctorName"]
+        if "department" in payload and payload["department"]:
+            existing.department = payload["department"]
+
+        db.commit()
+        db.refresh(existing)
+        return _camel(existing)
+
+    rnum = rep_num or f"LIS-REP-{datetime.now().year}-{''.join(random.choices(string.digits, k=4))}"
     row = LabReport(
         report_number=rnum,
         patient_name=payload.get("patientName", ""),
@@ -525,10 +562,6 @@ def create_report(payload: dict, db: Session = Depends(get_db), current_user: Us
     )
     db.add(row); db.commit(); db.refresh(row)
 
-    # The brief explicitly calls for a "lab report ready" notification --
-    # this router had no notification wiring at all before. Targets the
-    # ordering doctor's role queue since we only have their name here, not
-    # a user_id, and doctor accounts share the "doctor" role queue.
     notify_user_or_role(
         db,
         title="Lab Report Ready",
@@ -576,6 +609,14 @@ def update_report_status(item_id: str, payload: ReportStatusUpdate, db: Session 
 def update_report(item_id: str, payload: dict, db: Session = Depends(get_db), _=_auth, _perm=_perm_edit):
     row = _get_report(db, item_id)
     if not row:
+        uhid = payload.get("patientUhid")
+        pname = payload.get("patientName")
+        if uhid:
+            row = db.scalar(select(LabReport).where(func.lower(LabReport.patient_uhid) == uhid.strip().lower()))
+        if not row and pname:
+            row = db.scalar(select(LabReport).where(func.lower(LabReport.patient_name) == pname.strip().lower()))
+
+    if not row:
         raise HTTPException(404, "Report not found")
     if "testResults" in payload:
         row.test_results = payload["testResults"]
@@ -588,6 +629,12 @@ def update_report(item_id: str, payload: dict, db: Session = Depends(get_db), _=
         row.doctor_review_status = payload["doctorReviewStatus"]
     if "tests" in payload:
         row.tests = payload["tests"]
+    if "patientName" in payload and payload["patientName"]:
+        row.patient_name = payload["patientName"]
+    if "doctorName" in payload and payload["doctorName"]:
+        row.doctor_name = payload["doctorName"]
+    if "department" in payload and payload["department"]:
+        row.department = payload["department"]
     db.commit()
     db.refresh(row)
     return _camel(row)
@@ -603,6 +650,8 @@ def doctor_review_report(item_id: str, payload: DoctorReviewIn, db: Session = De
     if payload.comments:
         row.doctor_comments = payload.comments
     row.doctor_review_date = datetime.now().strftime("%Y-%m-%d %I:%M %p")
+    if payload.reviewStatus == "Approved":
+        row.status = "Approved"
     db.commit(); db.refresh(row)
     return _camel(row)
 
