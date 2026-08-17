@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Stethoscope, Play, CheckCircle2, Printer, FileText, Plus,
   Trash2, Upload, X, Search, Inbox, Thermometer, Heart, Activity,
@@ -362,6 +362,33 @@ export const ConsultationPage: React.FC = () => {
     return 25 + (Math.abs(hash) % 35);
   };
   const { user } = useAuth();
+  const { sendNotification } = useHMS();
+  const { testMasterList } = useLab();
+
+  function normalizeDateStr(dateStr: string): string {
+    if (!dateStr) return '';
+    const clean = dateStr.trim().split('T')[0].split(' ')[0];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+      return clean;
+    }
+    const ddmmyyyy = clean.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+    if (ddmmyyyy) {
+      const day = ddmmyyyy[1].padStart(2, '0');
+      const month = ddmmyyyy[2].padStart(2, '0');
+      const year = ddmmyyyy[3];
+      return `${year}-${month}-${day}`;
+    }
+    return clean;
+  }
+
+  const dynamicLabTestOptions = useMemo(() => {
+    const set = new Set<string>(LAB_TEST_OPTIONS);
+    (testMasterList || []).forEach((t) => {
+      if (t.testName) set.add(t.testName);
+    });
+    return Array.from(set);
+  }, [testMasterList]);
+
   const doctorDisplayName = user?.name || 'Doctor';
   const [doctorInstructionInput, setDoctorInstructionInput] = useState('');
   const [appointments, setAppointments] = useState<DoctorAppointment[]>(INITIAL_APPOINTMENTS);
@@ -376,7 +403,7 @@ export const ConsultationPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Scheduled' | 'In Progress' | 'Completed'>('All');
-  const [selectedDateFilter, setSelectedDateFilter] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [selectedDateFilter, setSelectedDateFilter] = useState<string>('');
 
   // Fetch real appointments from backend
   useEffect(() => {
@@ -500,10 +527,10 @@ export const ConsultationPage: React.FC = () => {
 
     let matchingReport = selectedAppointment
       ? labReports.find(
-          (r) =>
-            r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
-            r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
-        )
+        (r) =>
+          r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
+          r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
+      )
       : null;
 
     if (!matchingReport && selectedAppointment && labTests.length > 0) {
@@ -559,18 +586,36 @@ export const ConsultationPage: React.FC = () => {
   // Backup state for canceling edits
   const [backupForm, setBackupForm] = useState<ConsultationRecord | null>(null);
 
-  // Filter & Sort Appointments: 1. Scheduled -> 2. In Progress -> 3. Completed
-  const filteredAppointments = appointments.filter((a) => {
-    const matchesSearch =
-      a.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.patientUhid.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.tokenNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.reason.toLowerCase().includes(searchQuery.toLowerCase());
+  // Filter & Sort Appointments with robust date normalization
+  const dateFilteredAppointments = useMemo(() => {
+    if (!selectedDateFilter || selectedDateFilter.trim() === '') return appointments;
+    const targetNorm = normalizeDateStr(selectedDateFilter);
+    return appointments.filter((a) => {
+      const dNorm = normalizeDateStr(a.date);
+      const admNorm = normalizeDateStr(a.admissionDateTime);
+      return (
+        dNorm === targetNorm ||
+        admNorm === targetNorm ||
+        admNorm.startsWith(targetNorm) ||
+        (a.date && a.date.includes(selectedDateFilter)) ||
+        (a.admissionDateTime && a.admissionDateTime.includes(selectedDateFilter))
+      );
+    });
+  }, [appointments, selectedDateFilter]);
 
-    const matchesStatus = statusFilter === 'All' || a.status === statusFilter;
-    const matchesDate = !selectedDateFilter || a.date === selectedDateFilter || a.admissionDateTime.startsWith(selectedDateFilter);
-    return matchesSearch && matchesStatus && matchesDate;
-  });
+  const filteredAppointments = useMemo(() => {
+    return dateFilteredAppointments.filter((a) => {
+      const matchesSearch =
+        !searchQuery.trim() ||
+        a.patientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.patientUhid.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.tokenNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        a.reason.toLowerCase().includes(searchQuery.toLowerCase());
+
+      const matchesStatus = statusFilter === 'All' || a.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [dateFilteredAppointments, searchQuery, statusFilter]);
 
   const sortedAppointments = [...filteredAppointments].sort((a, b) => {
     const orderA = STATUS_ORDER[a.status] || 99;
@@ -946,6 +991,21 @@ export const ConsultationPage: React.FC = () => {
         );
       }
 
+      // Send notification to reception if follow-up date is assigned
+      if (followUpDate && followUpDate.trim() !== '') {
+        sendNotification({
+          title: '📅 Follow-up Date Assigned',
+          message: `Dr. ${doctorDisplayName} assigned a follow-up visit on ${followUpDate} for patient ${selectedAppointment.patientName} (UHID: ${selectedAppointment.patientUhid}). ${followUpNotes ? `Notes: ${followUpNotes}` : ''}`,
+          type: 'info',
+          module: 'Doctor OPD',
+          eventType: 'follow_up_assigned',
+          senderName: doctorDisplayName,
+          recipientRole: 'reception',
+          relatedRecordId: selectedAppointment.patientUhid,
+          priority: 'high',
+        });
+      }
+
       setSelectedAppointment(null);
       setIsEditing(false);
       setViewMode('list');
@@ -1029,6 +1089,21 @@ export const ConsultationPage: React.FC = () => {
         );
       }
 
+      // Send notification to reception if follow-up date is assigned
+      if (followUpDate && followUpDate.trim() !== '') {
+        sendNotification({
+          title: '📅 Follow-up Date Assigned',
+          message: `Dr. ${doctorDisplayName} assigned a follow-up visit on ${followUpDate} for patient ${selectedAppointment.patientName} (UHID: ${selectedAppointment.patientUhid}). ${followUpNotes ? `Notes: ${followUpNotes}` : ''}`,
+          type: 'info',
+          module: 'Doctor OPD',
+          eventType: 'follow_up_assigned',
+          senderName: doctorDisplayName,
+          recipientRole: 'reception',
+          relatedRecordId: selectedAppointment.patientUhid,
+          priority: 'high',
+        });
+      }
+
       setSelectedAppointment(null);
       setIsEditing(false);
       setViewMode('list');
@@ -1067,13 +1142,13 @@ export const ConsultationPage: React.FC = () => {
         prev.map((m) =>
           m.id === editingMedId
             ? {
-                ...m,
-                name: medName,
-                dosage: medDosage || '1 tablet',
-                frequency: medFreq,
-                duration: medDuration,
-                instructions: medInstructions || 'After meals',
-              }
+              ...m,
+              name: medName,
+              dosage: medDosage || '1 tablet',
+              frequency: medFreq,
+              duration: medDuration,
+              instructions: medInstructions || 'After meals',
+            }
             : m
         )
       );
@@ -1153,12 +1228,12 @@ export const ConsultationPage: React.FC = () => {
     )
     : [];
 
-  const counts = {
-    All: appointments.length,
-    Scheduled: appointments.filter((a) => a.status === 'Scheduled').length,
-    'In Progress': appointments.filter((a) => a.status === 'In Progress').length,
-    Completed: appointments.filter((a) => a.status === 'Completed').length,
-  };
+  const counts = useMemo(() => ({
+    All: dateFilteredAppointments.length,
+    Scheduled: dateFilteredAppointments.filter((a) => a.status === 'Scheduled').length,
+    'In Progress': dateFilteredAppointments.filter((a) => a.status === 'In Progress').length,
+    Completed: dateFilteredAppointments.filter((a) => a.status === 'Completed').length,
+  }), [dateFilteredAppointments]);
 
   // ═════════════════════════════════════════════════════════════
   // VIEW 1: FULL SCREEN TODAY'S APPOINTMENTS TABLE
@@ -1234,11 +1309,10 @@ export const ConsultationPage: React.FC = () => {
             </div>
             <button
               onClick={() => setSelectedDateFilter(new Date().toISOString().split('T')[0])}
-              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                selectedDateFilter === new Date().toISOString().split('T')[0]
+              className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedDateFilter === new Date().toISOString().split('T')[0]
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-              }`}
+                }`}
             >
               Today
             </button>
@@ -1283,9 +1357,20 @@ export const ConsultationPage: React.FC = () => {
                     <td colSpan={7} className="p-8 text-center">
                       <EmptyState
                         title="No Appointments Found"
-                        message={`No appointments matching your criteria (${statusFilter}).`}
+                        message={`No appointments matching your criteria (${statusFilter}${selectedDateFilter ? ` for date ${selectedDateFilter}` : ''}).`}
                         icon={<Stethoscope className="w-8 h-8 text-slate-300" />}
                       />
+                      {selectedDateFilter ? (
+                        <div className="mt-3 flex flex-col items-center gap-2">
+                          <p className="text-xs text-slate-500">There are {appointments.length} appointment(s) in total across all dates.</p>
+                          <button
+                            onClick={() => setSelectedDateFilter('')}
+                            className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold text-xs hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer transition-colors"
+                          >
+                            Show All Dates ({appointments.length} Appointments)
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ) : (
@@ -1638,10 +1723,10 @@ export const ConsultationPage: React.FC = () => {
           {(() => {
             const allMatchingReports = selectedAppointment
               ? labReports.filter(
-                  (r) =>
-                    (r.patientUhid && selectedAppointment.patientUhid && r.patientUhid.toLowerCase().trim() === selectedAppointment.patientUhid.toLowerCase().trim()) ||
-                    (r.patientName && selectedAppointment.patientName && r.patientName.toLowerCase().trim() === selectedAppointment.patientName.toLowerCase().trim())
-                )
+                (r) =>
+                  (r.patientUhid && selectedAppointment.patientUhid && r.patientUhid.toLowerCase().trim() === selectedAppointment.patientUhid.toLowerCase().trim()) ||
+                  (r.patientName && selectedAppointment.patientName && r.patientName.toLowerCase().trim() === selectedAppointment.patientName.toLowerCase().trim())
+              )
               : [];
 
             // Display latest active report by default. If a re-test was explicitly requested, include re-test reports as well.
@@ -1675,15 +1760,14 @@ export const ConsultationPage: React.FC = () => {
                           <p className="text-[10px] text-slate-500 font-medium">Sample Date: {matchingReport.generatedDate}</p>
                         </div>
                         <span
-                          className={`px-3 py-1 rounded-full text-[10px] font-extrabold ${
-                            matchingReport.doctorReviewStatus === 'Approved'
+                          className={`px-3 py-1 rounded-full text-[10px] font-extrabold ${matchingReport.doctorReviewStatus === 'Approved'
                               ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                               : matchingReport.doctorReviewStatus === 'Re-Test Requested'
-                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                              : matchingReport.doctorReviewStatus === 'Rejected'
-                              ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
-                          }`}
+                                ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                : matchingReport.doctorReviewStatus === 'Rejected'
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                            }`}
                         >
                           Status: {matchingReport.doctorReviewStatus}
                         </span>
@@ -1708,9 +1792,9 @@ export const ConsultationPage: React.FC = () => {
                                 const labRes = labResults.find(
                                   (lr) =>
                                     (lr.patientUhid.toLowerCase() === matchingReport.patientUhid.toLowerCase() ||
-                                     lr.patientName.toLowerCase() === matchingReport.patientName.toLowerCase()) &&
+                                      lr.patientName.toLowerCase() === matchingReport.patientName.toLowerCase()) &&
                                     (lr.testName.toLowerCase().trim().includes(r.testName.toLowerCase().trim()) ||
-                                     r.testName.toLowerCase().trim().includes(lr.testName.toLowerCase().trim()))
+                                      r.testName.toLowerCase().trim().includes(lr.testName.toLowerCase().trim()))
                                 );
                                 const val = r.resultValue && !['(Pending)', 'Pending Result', 'Pending Lab Analysis'].includes(r.resultValue)
                                   ? r.resultValue
@@ -1724,13 +1808,12 @@ export const ConsultationPage: React.FC = () => {
                                     <td className="py-2.5 px-3 text-slate-600">{r.referenceRange || labRes?.referenceRange || '70 - 140'}</td>
                                     <td className="py-2.5 px-3">
                                       <span
-                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                          flagVal === 'Critical'
+                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${flagVal === 'Critical'
                                             ? 'bg-rose-100 text-rose-700'
                                             : flagVal === 'High'
-                                            ? 'bg-amber-100 text-amber-800'
-                                            : 'bg-emerald-100 text-emerald-700'
-                                        }`}
+                                              ? 'bg-amber-100 text-amber-800'
+                                              : 'bg-emerald-100 text-emerald-700'
+                                          }`}
                                       >
                                         {flagVal}
                                       </span>
@@ -2106,7 +2189,7 @@ export const ConsultationPage: React.FC = () => {
                     className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
                   >
                     <option value="">Select lab test...</option>
-                    {LAB_TEST_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    {dynamicLabTestOptions.map((t) => <option key={t} value={t}>{t}</option>)}
                   </select>
                   <button
                     type="button"
@@ -2217,10 +2300,10 @@ export const ConsultationPage: React.FC = () => {
           {(() => {
             const allMatchingReports = selectedAppointment
               ? labReports.filter(
-                  (r) =>
-                    (r.patientUhid && selectedAppointment.patientUhid && r.patientUhid.toLowerCase().trim() === selectedAppointment.patientUhid.toLowerCase().trim()) ||
-                    (r.patientName && selectedAppointment.patientName && r.patientName.toLowerCase().trim() === selectedAppointment.patientName.toLowerCase().trim())
-                )
+                (r) =>
+                  (r.patientUhid && selectedAppointment.patientUhid && r.patientUhid.toLowerCase().trim() === selectedAppointment.patientUhid.toLowerCase().trim()) ||
+                  (r.patientName && selectedAppointment.patientName && r.patientName.toLowerCase().trim() === selectedAppointment.patientName.toLowerCase().trim())
+              )
               : [];
 
             const matchingReports = (() => {
@@ -2245,15 +2328,14 @@ export const ConsultationPage: React.FC = () => {
                           <p className="text-[10px] text-slate-500 font-medium">Sample Date: {matchingReport.generatedDate}</p>
                         </div>
                         <span
-                          className={`px-3 py-1 rounded-full text-[10px] font-extrabold ${
-                            matchingReport.doctorReviewStatus === 'Approved'
+                          className={`px-3 py-1 rounded-full text-[10px] font-extrabold ${matchingReport.doctorReviewStatus === 'Approved'
                               ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                               : matchingReport.doctorReviewStatus === 'Re-Test Requested'
-                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                              : matchingReport.doctorReviewStatus === 'Rejected'
-                              ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
-                          }`}
+                                ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                                : matchingReport.doctorReviewStatus === 'Rejected'
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                            }`}
                         >
                           Status: {matchingReport.doctorReviewStatus}
                         </span>
@@ -2282,13 +2364,12 @@ export const ConsultationPage: React.FC = () => {
                                   <td className="py-2.5 px-3 text-slate-600">{r.referenceRange}</td>
                                   <td className="py-2.5 px-3">
                                     <span
-                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                                        r.flag === 'Critical'
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.flag === 'Critical'
                                           ? 'bg-rose-100 text-rose-700'
                                           : r.flag === 'High'
-                                          ? 'bg-amber-100 text-amber-800'
-                                          : 'bg-emerald-100 text-emerald-700'
-                                      }`}
+                                            ? 'bg-amber-100 text-amber-800'
+                                            : 'bg-emerald-100 text-emerald-700'
+                                        }`}
                                     >
                                       {r.flag || 'Normal'}
                                     </span>
@@ -2448,10 +2529,10 @@ export const ConsultationPage: React.FC = () => {
                       {(() => {
                         const matchingReport = selectedAppointment
                           ? labReports.find(
-                              (r) =>
-                                r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
-                                r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
-                            )
+                            (r) =>
+                              r.patientUhid.toLowerCase() === selectedAppointment.patientUhid.toLowerCase() ||
+                              r.patientName.toLowerCase() === selectedAppointment.patientName.toLowerCase()
+                          )
                           : null;
 
                         const results = matchingReport?.testResults?.filter(
@@ -2470,11 +2551,10 @@ export const ConsultationPage: React.FC = () => {
                               <td className="py-3 px-3.5 text-slate-600">{r.referenceRange || '70 - 99 mg/dL'}</td>
                               <td className="py-3 px-3.5">
                                 <span
-                                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
-                                    r.flag === 'Critical' || r.flag === 'High'
+                                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${r.flag === 'Critical' || r.flag === 'High'
                                       ? 'bg-amber-100 text-amber-800 border border-amber-200'
                                       : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                  }`}
+                                    }`}
                                 >
                                   {r.flag || 'High'}
                                 </span>
@@ -2511,11 +2591,10 @@ export const ConsultationPage: React.FC = () => {
                       Saved Doctor Instruction / Reply:
                     </span>
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                        popupStatus === 'Re-Test Requested'
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${popupStatus === 'Re-Test Requested'
                           ? 'bg-purple-100 text-purple-800 border border-purple-200'
                           : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                      }`}
+                        }`}
                     >
                       {popupStatus}
                     </span>

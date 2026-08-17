@@ -370,7 +370,14 @@ export const PurchaseOrdersPage: React.FC = () => {
       const vName = (po.vendorName || (po as any).vendor_name || '').toLowerCase();
       const query = (searchQuery || '').toLowerCase();
       const matchesSearch = poNum.includes(query) || vName.includes(query);
-      const matchesStatus = statusFilter === 'All' || po.status === statusFilter;
+      const matchesStatus =
+        statusFilter === 'All'
+          ? true
+          : statusFilter === 'Not Updated'
+          ? po.status !== 'Fulfilled' && po.status !== 'Completed'
+          : statusFilter === 'Fulfilled'
+          ? po.status === 'Fulfilled' || po.status === 'Completed'
+          : po.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [purchaseOrders, searchQuery, statusFilter]);
@@ -432,11 +439,12 @@ export const PurchaseOrdersPage: React.FC = () => {
             className="bg-transparent font-bold text-blue-600 outline-none cursor-pointer"
           >
             <option value="All">All Statuses</option>
+            <option value="Not Updated">Not Updated / Pending Receipt</option>
+            <option value="Fulfilled">Fulfilled / Updated</option>
             <option value="Draft">Draft</option>
             <option value="Pending">Pending</option>
             <option value="Approved">Approved</option>
             <option value="Rejected">Rejected</option>
-            <option value="Fulfilled">Fulfilled</option>
           </select>
         </div>
       </div>
@@ -486,18 +494,20 @@ export const PurchaseOrdersPage: React.FC = () => {
                     <td className="py-3.5 px-4">
                       <span
                         className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          po.status === 'Approved'
+                          po.status === 'Fulfilled' || po.status === 'Completed'
+                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                            : po.status === 'Approved'
                             ? 'bg-emerald-100 text-emerald-700'
                             : po.status === 'Pending'
                             ? 'bg-amber-100 text-amber-700'
                             : po.status === 'Rejected'
                             ? 'bg-rose-100 text-rose-700'
-                            : po.status === 'Fulfilled'
-                            ? 'bg-blue-100 text-blue-700'
                             : 'bg-slate-100 text-slate-600'
                         }`}
                       >
-                        {po.status}
+                        {po.status === 'Fulfilled' || po.status === 'Completed'
+                          ? '✓ Fulfilled (Updated)'
+                          : `${po.status} (Not Updated)`}
                       </span>
                     </td>
                     <td className="py-3.5 px-4 text-right">

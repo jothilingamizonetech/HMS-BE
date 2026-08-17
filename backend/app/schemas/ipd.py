@@ -52,12 +52,12 @@ class IPDAdmissionBase(BaseModel):
     patient_uhid: str
     patient_name: str
     ward: str
-    room_number: str
+    room_number: str | None = "R-101"
     bed_number: str
     attending_doctor: str
     attending_nurse: str | None = None
     admission_reason: str | None = None
-    emergency_contact: str
+    emergency_contact: str | None = "N/A"
     insurance_provider: str | None = None
     insurance_number: str | None = None
     branch: str | None = None

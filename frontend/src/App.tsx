@@ -18,7 +18,6 @@ import { ReceptionOverview } from './pages/reception/ReceptionOverview';
 import { RegisterPatientPage } from './pages/reception/patient/RegisterPatientPage';
 import { SearchPatientPage } from './pages/reception/patient/SearchPatientPage';
 import { UpdatePatientPage } from './pages/reception/patient/UpdatePatientPage';
-import { EmergencyContactPage } from './pages/reception/patient/EmergencyContactPage';
 
 import { BookAppointmentPage } from './pages/reception/appointment/BookAppointmentPage';
 import { WalkInPage } from './pages/reception/appointment/WalkInPage';
@@ -180,7 +179,7 @@ export default function App() {
                       <Route path="patient/register" element={<RegisterPatientPage />} />
                       <Route path="patient/search" element={<SearchPatientPage />} />
                       <Route path="patient/update" element={<UpdatePatientPage />} />
-                      <Route path="patient/emergency" element={<EmergencyContactPage />} />
+                      <Route path="patient/emergency" element={<Navigate to="/reception/patient/search" replace />} />
 
                       {/* Appointment Management */}
                       <Route path="appointment/book" element={<BookAppointmentPage />} />

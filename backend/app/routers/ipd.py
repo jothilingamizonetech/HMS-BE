@@ -46,14 +46,20 @@ def list_beds(
     role_norm = role_str.lower().replace(" ", "_").replace("userrole.", "")
     target_branch = branch or (current_user.branch if role_norm not in ("super_admin", "admin") else None)
     if target_branch and target_branch.lower() != "all":
-        norm_sub = target_branch.lower().replace("branch", "").replace("hospital", "").replace("cauvery", "").replace("care", "").strip()
+        import re
+        clean_target = target_branch.lower()
+        words = [w for w in re.split(r'[\s\-_]+', clean_target) if w and w not in ("branch", "hospital", "cauvery", "care", "hms", "aegiscare")]
+        
         bed_branch_clauses = [
-            func.lower(Bed.branch) == target_branch.lower(),
+            func.lower(Bed.branch) == clean_target,
         ]
-        if norm_sub:
-            bed_branch_clauses.append(func.lower(Bed.branch).contains(norm_sub))
-        if target_branch.lower() in ("main branch", "main"):
+        for w in words:
+            if len(w) > 2:
+                bed_branch_clauses.append(func.lower(Bed.branch).contains(w))
+        
+        if any(mb in clean_target for mb in ("main", "headquarters", "hq")):
             bed_branch_clauses.extend([Bed.branch.is_(None), Bed.branch == ""])
+            
         stmt = stmt.where(or_(*bed_branch_clauses))
     return db.scalars(stmt).all()
 
@@ -203,14 +209,20 @@ def admit_patient(
     db.add(admission)
 
     # Mark the referenced bed as occupied, and patient as admitted, if resolvable
+    bed = None
     if admission.bed_id:
         bed = db.get(Bed, admission.bed_id)
-        if bed and bed.status == BedStatus.Available:
-            bed.status = BedStatus.Occupied
-            bed.current_patient_id = admission.patient_id
-            bed.current_patient_uhid = admission.patient_uhid
-            bed.current_patient_name = admission.patient_name
-            bed.admitted_date = admission.admission_date
+    if not bed and admission.bed_number:
+        stmt_b = select(Bed).where(func.lower(Bed.bed_number) == admission.bed_number.lower())
+        bed = db.scalars(stmt_b).first()
+
+    if bed:
+        admission.bed_id = bed.id
+        bed.status = BedStatus.Occupied
+        bed.current_patient_id = admission.patient_id
+        bed.current_patient_uhid = admission.patient_uhid
+        bed.current_patient_name = admission.patient_name
+        bed.admitted_date = admission.admission_date
 
     if admission.patient_id:
         patient = db.get(Patient, admission.patient_id)

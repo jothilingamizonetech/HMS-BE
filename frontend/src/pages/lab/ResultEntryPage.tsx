@@ -55,8 +55,30 @@ const AVAILABLE_TESTS_CATALOG = [
 ];
 
 export const ResultEntryPage: React.FC = () => {
-  const { labResults, labReports, saveLabResult, updateLabResult, updateLabReport, createPatientOrderFromOPD, generateReport } = useLab();
+  const { labResults, labReports, testMasterList, saveLabResult, updateLabResult, updateLabReport, createPatientOrderFromOPD, generateReport } = useLab();
   const { addToast, patients } = useHMS();
+
+  // Combine default catalog with tests dynamically created in Test Master
+  const availableTestsCatalog = useMemo(() => {
+    const list = [...AVAILABLE_TESTS_CATALOG];
+    const seen = new Set(list.map((t) => (t.code || t.name).toLowerCase().trim()));
+
+    (testMasterList || []).forEach((t) => {
+      const codeKey = (t.testCode || '').toLowerCase().trim();
+      const nameKey = (t.testName || '').toLowerCase().trim();
+      if ((codeKey && !seen.has(codeKey)) || (nameKey && !seen.has(nameKey))) {
+        if (codeKey) seen.add(codeKey);
+        if (nameKey) seen.add(nameKey);
+        list.push({
+          name: t.testName,
+          code: t.testCode || `TEST-${t.id}`,
+          unit: t.unit || 'g/dL',
+          range: t.normalRange || t.referenceRange || 'Normal',
+        });
+      }
+    });
+    return list;
+  }, [testMasterList]);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -1238,12 +1260,12 @@ export const ResultEntryPage: React.FC = () => {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-3 bg-slate-50 rounded-2xl border border-slate-200 custom-scrollbar">
-                  {AVAILABLE_TESTS_CATALOG.filter(
+                  {availableTestsCatalog.filter(
                     (test) =>
                       test.name.toLowerCase().includes(testSearchQuery.toLowerCase()) ||
                       test.code.toLowerCase().includes(testSearchQuery.toLowerCase())
                   ).length > 0 ? (
-                    AVAILABLE_TESTS_CATALOG.filter(
+                    availableTestsCatalog.filter(
                       (test) =>
                         test.name.toLowerCase().includes(testSearchQuery.toLowerCase()) ||
                         test.code.toLowerCase().includes(testSearchQuery.toLowerCase())

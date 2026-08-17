@@ -160,78 +160,66 @@ export const MedicineListPage: React.FC = () => {
       status: string;
     }[] = [];
 
-    const seenKeys = new Set<string>();
+    const map = new Map<string, typeof list[0]>();
 
-    // 1. Filter ONLY items that are APPROVED / COMPLETED by Pharmacy
+    // Filter ONLY items that are APPROVED / COMPLETED / RECEIVED transfers issued by Store Manager
     (transfersData.transfers || [])
       .filter((t: any) => {
-        const st = String(t.status || '').toLowerCase();
+        const st = String(t.status || '').toLowerCase().trim();
         return st === 'approved' || st === 'completed' || st === 'received';
       })
       .forEach((t: any) => {
+        const code = (t.itemCode || t.item_code || '').trim();
+        const name = (t.itemName || t.item_name || '').trim();
+        const itemKey = (code || name).toLowerCase();
+        if (!itemKey) return;
+
         const storeMatch = storeItems.find(
-          (si) => (si.itemCode || '').toLowerCase().trim() === (t.itemCode || '').toLowerCase().trim()
+          (si) =>
+            (si.itemCode || '').toLowerCase().trim() === code.toLowerCase() ||
+            (si.itemName || '').toLowerCase().trim() === name.toLowerCase()
         );
-        const key = `${(t.itemCode || '').toLowerCase().trim()}_${t.quantity}`;
-        if (!seenKeys.has(key)) {
-          seenKeys.add(key);
-          list.push({
+
+        if (map.has(itemKey)) {
+          // Deduplicate & aggregate total issued quantity for this approved product
+          const existing = map.get(itemKey)!;
+          existing.quantity += Number(t.quantity || 0);
+        } else {
+          const itemObj = {
             id: String(t.id),
             transferNumber: t.transferNumber || t.transfer_number || `OUT-${t.id}`,
-            itemCode: t.itemCode || t.item_code || 'MED-001',
-            itemName: t.itemName || t.item_name || 'Product',
+            itemCode: code || 'MED-001',
+            itemName: name || 'Product',
             quantity: Number(t.quantity || 0),
             batchNumber: t.batchNumber || t.batch_number || 'STORE-BATCH',
             date: t.date || t.transferDate || new Date().toISOString().split('T')[0],
             category: storeMatch?.category || 'Pharmaceuticals',
             unitPrice: storeMatch?.unitPrice || 50,
             status: 'Approved',
-          });
+          };
+          map.set(itemKey, itemObj);
         }
       });
 
-    // 2. If list has items or if fallback store items needed
-    storeItems.forEach((si) => {
-      const codeKey = (si.itemCode || '').toLowerCase().trim();
-      if (!seenKeys.has(codeKey)) {
-        seenKeys.add(codeKey);
-        list.push({
-          id: `store-${si.id}`,
-          transferNumber: `ISSUED-${si.itemCode}`,
-          itemCode: si.itemCode,
-          itemName: si.itemName,
-          quantity: Math.max(10, si.currentStock || 0),
-          batchNumber: 'BAT-STORE-2026',
-          date: new Date().toISOString().split('T')[0],
-          category: si.category || 'Pharmaceuticals',
-          unitPrice: si.unitPrice || 50,
-          status: 'Approved',
-        });
-      }
-    });
-
-    return list;
+    return Array.from(map.values());
   }, [transfersData, storeItems]);
 
-  const { notAddedProducts, alreadyAddedProducts } = useMemo(() => {
-    const notAdded: typeof approvedIssuedProducts = [];
-    const alreadyAdded: typeof approvedIssuedProducts = [];
+  const [addedTransferIds, setAddedTransferIds] = useState<string[]>(() => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem('hms_added_store_transfers') || '[]');
+      return (parsed || []).filter((id: string) => !id.startsWith('ITM-') && !id.startsWith('MED-'));
+    } catch {
+      return [];
+    }
+  });
 
-    approvedIssuedProducts.forEach((st) => {
-      const exists = medicines.some(
-        (m) =>
-          m.code.toLowerCase().trim() === st.itemCode.toLowerCase().trim() ||
-          m.name.toLowerCase().trim() === st.itemName.toLowerCase().trim()
-      );
-      if (exists) {
-        alreadyAdded.push(st);
-      } else {
-        notAdded.push(st);
-      }
+  const pendingStoreIssuedProducts = useMemo(() => {
+    return approvedIssuedProducts.filter((st) => {
+      // Remove ONLY the specific transfer ID that was added/processed
+      const isAdded = addedTransferIds.includes(st.id);
+      return !isAdded;
     });
-
-    return { notAddedProducts: notAdded, alreadyAddedProducts: alreadyAdded };
-  }, [approvedIssuedProducts, medicines]);
+  }, [approvedIssuedProducts, addedTransferIds]);
 
   const handleIssuedProductSelect = (transferId: string) => {
     setSelectedTransferId(transferId);
@@ -341,6 +329,12 @@ export const MedicineListPage: React.FC = () => {
   const handleOpenEditModal = (med: Medicine) => {
     setIsEditMode(true);
     setSelectedMedicine(med);
+    const matchedIssued = approvedIssuedProducts.find(
+      (st) =>
+        st.itemCode.toLowerCase().trim() === med.code.toLowerCase().trim() ||
+        st.itemName.toLowerCase().trim() === med.name.toLowerCase().trim()
+    );
+    setSelectedTransferId(matchedIssued ? matchedIssued.id : '');
     setFormCode(med.code);
     setFormName(med.name);
     setFormGeneric(med.genericName);
@@ -434,13 +428,23 @@ export const MedicineListPage: React.FC = () => {
         );
       }
 
-      // If linked to a pending store transfer, approve it in backend
-      if (selectedTransferId && !selectedTransferId.startsWith('store-')) {
-        try {
-          await approvePharmacyTransferApi(selectedTransferId);
-          await loadStoreTransfers();
-        } catch (e) {
-          console.warn('Auto-approve transfer notice:', e);
+      // If linked to a store transfer, mark ONLY that specific transfer ID as added
+      if (selectedTransferId) {
+        setAddedTransferIds((prev) => {
+          const updated = Array.from(new Set([...prev, selectedTransferId]));
+          try {
+            localStorage.setItem('hms_added_store_transfers', JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
+
+        if (!selectedTransferId.startsWith('store-')) {
+          try {
+            await approvePharmacyTransferApi(selectedTransferId);
+            await loadStoreTransfers();
+          } catch (e) {
+            console.warn('Auto-approve transfer notice:', e);
+          }
         }
       }
 
@@ -915,62 +919,47 @@ export const MedicineListPage: React.FC = () => {
                   <label className="font-extrabold text-emerald-950 text-xs flex items-center gap-1.5">
                     <Truck className="w-4 h-4 text-emerald-600 animate-pulse" /> Select Approved Product Sent by Store Manager *
                   </label>
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold">
-                    <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
-                      ⏳ Not Added: {notAddedProducts.length}
-                    </span>
-                    <span className="bg-emerald-100 text-emerald-900 border border-emerald-300 px-2 py-0.5 rounded-full">
-                      ✅ Added: {alreadyAddedProducts.length}
-                    </span>
-                  </div>
+                  <span className="bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold">
+                    📦 Pending Store Issues: {pendingStoreIssuedProducts.length} Products
+                  </span>
                 </div>
 
                 <select
                   value={selectedTransferId}
                   onChange={(e) => handleIssuedProductSelect(e.target.value)}
-                  className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2 font-extrabold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs text-xs"
+                  className="w-full bg-white border border-emerald-300 rounded-xl px-3 py-2.5 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shadow-2xs text-xs"
                 >
-                  <option value="">-- Choose approved product sent by Store Manager --</option>
+                  <option value="">
+                    {pendingStoreIssuedProducts.length > 0
+                      ? "-- Select approved product sent by Store Manager --"
+                      : "-- No pending store-issued products (All Added) --"}
+                  </option>
 
-                  {notAddedProducts.length > 0 && (
-                    <optgroup label="⏳ NOT ADDED TO PHARMACY LIST YET (Requires Price Fix & Save)">
-                      {notAddedProducts.map((st) => (
-                        <option key={st.id} value={st.id}>
-                          ⏳ [NOT ADDED YET] {st.itemName} ({st.itemCode}) — Issued Qty: +{st.quantity} units | Ref #: {st.transferNumber}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-
-                  {alreadyAddedProducts.length > 0 && (
-                    <optgroup label="✅ ALREADY ADDED TO PHARMACY LIST (In Stock)">
-                      {alreadyAddedProducts.map((st) => (
-                        <option key={st.id} value={st.id}>
-                          ✅ [ADDED IN LIST] {st.itemName} ({st.itemCode}) — Issued Qty: +{st.quantity} units | Ref #: {st.transferNumber}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
+                  {pendingStoreIssuedProducts.map((st) => (
+                    <option key={st.id} value={st.id}>
+                      {st.itemName} ({st.itemCode}) — Issued: {st.quantity} units
+                    </option>
+                  ))}
                 </select>
 
-                {selectedTransferId && (
+                {selectedTransferId ? (
                   <div className="pt-1">
-                    {isEditMode ? (
-                      <div className="flex items-center gap-2 p-2.5 bg-emerald-100/90 border border-emerald-300 text-emerald-950 rounded-xl font-bold text-[11px]">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                        <span>Status: <strong>ALREADY ADDED IN PHARMACY LIST</strong> — Saving will update stock & selling price.</span>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 p-2.5 bg-amber-100/90 border border-amber-300 text-amber-950 rounded-xl font-bold text-[11px]">
-                        <Clock className="w-4 h-4 text-amber-700 shrink-0 animate-bounce" />
-                        <span>Status: <strong>NOT ADDED YET</strong> — Set selling price below and click "Save Medicine" to add to pharmacy list.</span>
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 p-2.5 bg-emerald-100/90 border border-emerald-300 text-emerald-950 rounded-xl font-bold text-[11px]">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span>Status: <strong>STORE ISSUED PRODUCT SELECTED</strong> — Auto-filled prices & specifications. Saving will add it to Pharmacy stock and remove it from this pending dropdown.</span>
+                    </div>
                   </div>
-                )}
+                ) : pendingStoreIssuedProducts.length === 0 ? (
+                  <div className="pt-1">
+                    <div className="flex items-center gap-2 p-2.5 bg-emerald-100/90 border border-emerald-300 text-emerald-950 rounded-xl font-medium text-[11px]">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span>All products issued by Store Manager have been added to Pharmacy stock.</span>
+                    </div>
+                  </div>
+                ) : null}
 
                 <p className="text-[10px] text-slate-600 font-medium">
-                  💡 Products are categorized into <strong>NOT ADDED YET</strong> (waiting for selling price fix) and <strong>ALREADY ADDED</strong> (in stock). Select a product, fix the selling price below, and click Save.
+                  💡 Select a pending product issued by the Store Manager to populate medicine specifications. Once saved, it will be automatically removed from this list.
                 </p>
               </div>
 

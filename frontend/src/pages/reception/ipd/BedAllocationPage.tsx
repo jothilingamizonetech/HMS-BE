@@ -432,7 +432,7 @@ export const BedAllocationPage: React.FC = () => {
                   .filter((b) => b.id !== selectedBedForTransfer.id && b.status === 'Available')
                   .map((b) => (
                     <option key={b.id} value={b.id}>
-                      Bed {b.bedNumber} - {b.ward} ({b.roomNumber})
+                      {b.bedNumber} — {b.ward} ({b.roomNumber})
                     </option>
                   ))}
               </select>
@@ -490,7 +490,7 @@ export const BedAllocationPage: React.FC = () => {
                   const matchesWard = b.ward.toLowerCase().includes(selectedNurseTransferReq.newWard.toLowerCase());
                   return (
                     <option key={b.id} value={b.id} disabled={!isAvailable}>
-                      Bed {b.bedNumber} - {b.ward} ({b.roomNumber}) {isAvailable ? '🟢 Available' : `🔴 Occupied (${b.currentPatientName || 'Occupied'})`} {matchesWard ? '⭐ (Requested Ward)' : ''}
+                      {b.bedNumber} — {b.ward} ({b.roomNumber}) {isAvailable ? '🟢 Available' : `🔴 Occupied (${b.currentPatientName || 'Occupied'})`} {matchesWard ? '⭐ (Requested Ward)' : ''}
                     </option>
                   );
                 })}

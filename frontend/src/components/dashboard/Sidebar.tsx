@@ -143,14 +143,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
                   <UserCheck className="w-3.5 h-3.5" />
                   <span>Update Profile</span>
                 </NavLink>
-                <NavLink
-                  to="/reception/patient/emergency"
-                  onClick={() => setMobileOpen(false)}
-                  className={subNavItemClass}
-                >
-                  <PhoneCall className="w-3.5 h-3.5" />
-                  <span>Emergency Contacts</span>
-                </NavLink>
               </div>
             )}
           </div>

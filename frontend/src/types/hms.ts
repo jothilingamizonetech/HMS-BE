@@ -67,6 +67,8 @@ export interface Patient {
   // Status
   status: 'Active' | 'Admitted' | 'Discharged';
   registrationDate: string;
+  createdDate?: string;
+  createdAt?: string;
   branch?: string;
 }
 
@@ -155,6 +157,8 @@ export interface Appointment {
   dob?: string;
   age?: number;
   gender?: 'Male' | 'Female' | 'Other';
+  patientAge?: number;
+  patientGender?: string;
   bloodGroup?: string;
   address?: string;
   city?: string;
@@ -297,6 +301,7 @@ export interface LabTestMaster {
   method: string;
   machine: string;
   normalRange: string;
+  referenceRange?: string;
   criticalRange: string;
   unit: string;
   tatHours: number;

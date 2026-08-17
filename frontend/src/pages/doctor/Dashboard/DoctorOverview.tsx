@@ -409,8 +409,8 @@ export const DoctorOverview: React.FC = () => {
               uhid: a.patientUhid || key,
               firstName: nameParts[0] || 'Patient',
               lastName: nameParts.slice(1).join(' ') || '',
-              age: a.patientAge || 32,
-              gender: a.patientGender || 'Male',
+              age: a.patientAge || a.age || 32,
+              gender: a.patientGender || a.gender || 'Male',
               phone: a.patientMobile || '9876543210',
               lastVisit: a.date || 'Today',
               status: a.status || 'Completed',
@@ -483,6 +483,16 @@ export const DoctorOverview: React.FC = () => {
     const token = localStorage.getItem('hms_token');
     const apiHost = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '').replace(/\/api\/v1$/, '');
     fetch(`${apiHost}/api/v1/notifications/${notifId}/read`, {
+      method: 'PUT',
+      headers: { Authorization: `Bearer ${token}` },
+    }).catch(() => { });
+  };
+
+  const markAllNotificationsRead = () => {
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    const token = localStorage.getItem('hms_token');
+    const apiHost = (import.meta.env.VITE_API_URL || 'http://localhost:8000').replace(/\/+$/, '').replace(/\/api\/v1$/, '');
+    fetch(`${apiHost}/api/v1/notifications/mark-all-read`, {
       method: 'PUT',
       headers: { Authorization: `Bearer ${token}` },
     }).catch(() => { });

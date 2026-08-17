@@ -35,7 +35,9 @@ import {
   allocateBedApi,
   releaseBedApi,
   fetchNotificationsApi,
+  createNotificationApi,
   markNotificationReadApi,
+  markAllNotificationsReadApi,
   fetchStoreItemsApi,
   createStoreItemApi,
   updateStoreItemApi,
@@ -109,7 +111,19 @@ interface HMSContextType {
 
   // Notifications & UI
   notifications: Notification[];
+  sendNotification: (notificationData: {
+    title: string;
+    message: string;
+    type?: 'info' | 'warning' | 'success';
+    module?: string;
+    eventType?: string;
+    senderName?: string;
+    recipientRole?: string;
+    relatedRecordId?: string;
+    priority?: string;
+  }) => Promise<Notification>;
   markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
   toasts: ToastMessage[];
   addToast: (type: ToastMessage['type'], title: string, message: string) => void;
   removeToast: (id: string) => void;
@@ -925,15 +939,47 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Notifications
+  const sendNotification = async (notificationData: any): Promise<Notification> => {
+    try {
+      const created = await createNotificationApi(notificationData);
+      setNotifications((prev) => [created, ...prev]);
+      return created;
+    } catch (err) {
+      console.error('sendNotification failed:', err);
+      const localNotif: Notification = {
+        id: `notif-${Date.now()}`,
+        title: notificationData.title,
+        message: notificationData.message,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: notificationData.type || 'info',
+        read: false,
+        module: notificationData.module,
+        eventType: notificationData.eventType,
+        senderName: notificationData.senderName,
+        recipientRole: notificationData.recipientRole,
+        relatedRecordId: notificationData.relatedRecordId,
+        priority: notificationData.priority,
+      };
+      setNotifications((prev) => [localNotif, ...prev]);
+      return localNotif;
+    }
+  };
+
   const markNotificationRead = async (id: string) => {
     try {
       await markNotificationReadApi(id);
       setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
     } catch (err) {
       console.error('markNotificationRead failed:', err);
-      // Deliberately no error toast here: a failed "mark as read" is low
-      // stakes and firing a toast every time a notification bell is clicked
-      // during a network hiccup would be noisy. It simply stays unread.
+    }
+  };
+
+  const markAllNotificationsRead = async () => {
+    try {
+      await markAllNotificationsReadApi();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    } catch (err) {
+      console.error('markAllNotificationsRead failed:', err);
     }
   };
 
@@ -978,7 +1024,9 @@ export const HMSProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updatePurchaseOrder,
         deletePurchaseOrder,
         notifications,
+        sendNotification,
         markNotificationRead,
+        markAllNotificationsRead,
         toasts,
         addToast,
         removeToast,

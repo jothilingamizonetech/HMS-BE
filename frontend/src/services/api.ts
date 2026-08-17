@@ -752,7 +752,57 @@ export async function fetchNotificationsApi(): Promise<Notification[]> {
     time: n.time,
     type: n.type,
     read: n.read,
+    module: n.module,
+    eventType: n.event_type || n.eventType,
+    senderName: n.sender_name || n.senderName,
+    recipientRole: n.recipient_role || n.recipientRole,
+    relatedRecordId: n.related_record_id || n.relatedRecordId,
+    priority: n.priority,
+    status: n.status,
   }));
+}
+
+export async function createNotificationApi(payload: {
+  title: string;
+  message: string;
+  type?: 'info' | 'warning' | 'success';
+  module?: string;
+  eventType?: string;
+  senderName?: string;
+  recipientRole?: string;
+  relatedRecordId?: string;
+  priority?: string;
+}): Promise<Notification> {
+  const body = {
+    title: payload.title,
+    message: payload.message,
+    type: payload.type || 'info',
+    module: payload.module || 'Consultation',
+    event_type: payload.eventType || 'follow_up_assigned',
+    sender_name: payload.senderName,
+    recipient_role: payload.recipientRole || 'reception',
+    related_record_id: payload.relatedRecordId,
+    priority: payload.priority || 'high',
+  };
+  const item = await apiRequest<any>('/notifications', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return {
+    id: item.id,
+    title: item.title,
+    message: item.message,
+    time: item.time,
+    type: item.type,
+    read: item.read,
+    module: item.module,
+    eventType: item.event_type || item.eventType,
+    senderName: item.sender_name || item.senderName,
+    recipientRole: item.recipient_role || item.recipientRole,
+    relatedRecordId: item.related_record_id || item.relatedRecordId,
+    priority: item.priority,
+    status: item.status,
+  };
 }
 
 export async function markNotificationReadApi(id: string): Promise<void> {

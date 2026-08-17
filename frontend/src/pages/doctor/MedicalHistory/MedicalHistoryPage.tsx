@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useLab } from '../../../context/LabContext';
 import {
   Search, ArrowLeft, User, Phone, Droplets, BedDouble, Stethoscope,
@@ -222,7 +222,16 @@ const StatusBadge: React.FC<{ status: string; dot?: boolean }> = ({ status, dot 
 
 // ─── Main Component ───────────────────────────────────────────
 export const MedicalHistoryPage: React.FC = () => {
-  const { labReports, doctorReviewReport, createPatientOrderFromOPD } = useLab();
+  const { labReports, testMasterList, doctorReviewReport, createPatientOrderFromOPD } = useLab();
+
+  const dynamicLabTestOptions = useMemo(() => {
+    const set = new Set<string>(LAB_TEST_OPTIONS);
+    (testMasterList || []).forEach((t) => {
+      if (t.testName) set.add(t.testName);
+    });
+    return Array.from(set);
+  }, [testMasterList]);
+
   const [patients, setPatients] = useState<IPDPatientRecord[]>(INITIAL_PATIENTS);
   
   // View mode: 'list' (Full Screen Table) | 'details' (Full Screen 9-Section EMR)
@@ -1723,7 +1732,7 @@ export const MedicalHistoryPage: React.FC = () => {
                           className="w-full appearance-none bg-slate-50 border border-purple-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500/20 pr-8 cursor-pointer"
                         >
                           <option value="">Select lab test...</option>
-                          {LAB_TEST_OPTIONS.map((testName, i) => (
+                          {dynamicLabTestOptions.map((testName, i) => (
                             <option key={i} value={testName}>
                               {testName}
                             </option>

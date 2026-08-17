@@ -59,8 +59,23 @@ export const GoodsReceiptPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedGRN, setSelectedGRN] = useState<GoodsReceipt | null>(null);
 
+  // Filter Purchase Orders to show ONLY unfulfilled / not-yet-updated POs in GRN creation
+  const unfulfilledPurchaseOrders = useMemo(() => {
+    const fulfilledPoNumbers = new Set(grnList.map((g) => g.poNumber).filter(Boolean));
+    return (purchaseOrders || []).filter((p) => {
+      if (!p) return false;
+      // If editing an existing GRN, allow its currently assigned PO
+      if (selectedGRN && (selectedGRN.poNumber === p.poNumber || selectedGRN.id === (selectedGRN as any).purchase_order_id || selectedGRN.id === p.id)) {
+        return true;
+      }
+      const isStatusFulfilled = p.status === 'Fulfilled' || (p.status as string) === 'Completed' || (p.status as string) === 'Received';
+      const isGrnExisting = fulfilledPoNumbers.has(p.poNumber);
+      return !isStatusFulfilled && !isGrnExisting;
+    });
+  }, [purchaseOrders, grnList, selectedGRN]);
+
   // Form State
-  const [selectedPoId, setSelectedPoId] = useState(purchaseOrders[0]?.id || '');
+  const [selectedPoId, setSelectedPoId] = useState('');
   const [receivedDate, setReceivedDate] = useState(new Date().toISOString().split('T')[0]);
   const [remarks, setRemarks] = useState('');
 
@@ -69,19 +84,21 @@ export const GoodsReceiptPage: React.FC = () => {
 
   const handlePoChange = (poId: string) => {
     setSelectedPoId(poId);
-    const po = purchaseOrders.find((p) => p.id === poId);
-    if (po && po.items.length > 0) {
+    const po = (purchaseOrders || []).find((p) => p.id === poId);
+    if (po && po.items && po.items.length > 0) {
       setGrnItems(
-        po.items.map((i) => ({
+        po.items.map((i: any) => ({
           id: `grni-${Date.now()}-${Math.random()}`,
-          itemId: i.itemId,
-          itemCode: i.itemCode,
-          itemName: i.itemName,
+          itemId: i.itemId || i.item_id,
+          itemCode: i.itemCode || i.item_code,
+          itemName: i.itemName || i.item_name,
           receivedQuantity: i.quantity,
           acceptedQuantity: i.quantity,
           rejectedQuantity: 0,
         }))
       );
+    } else {
+      setGrnItems([]);
     }
   };
 
@@ -104,13 +121,15 @@ export const GoodsReceiptPage: React.FC = () => {
 
   const handleOpenCreate = () => {
     setSelectedGRN(null);
-    setSelectedPoId(purchaseOrders[0]?.id || '');
+    const firstUnfulfilled = unfulfilledPurchaseOrders[0];
+    const initialPoId = firstUnfulfilled?.id || '';
+    setSelectedPoId(initialPoId);
     setReceivedDate(new Date().toISOString().split('T')[0]);
     setRemarks('');
-    const po = purchaseOrders[0];
-    if (po && po.items.length > 0) {
+
+    if (firstUnfulfilled && firstUnfulfilled.items && firstUnfulfilled.items.length > 0) {
       setGrnItems(
-        po.items.map((i: any) => ({
+        firstUnfulfilled.items.map((i: any) => ({
           id: `grni-${Date.now()}-${Math.random()}`,
           itemId: i.itemId || i.item_id,
           itemCode: i.itemCode || i.item_code,
@@ -154,17 +173,19 @@ export const GoodsReceiptPage: React.FC = () => {
     e.preventDefault();
     const po = purchaseOrders.find((p) => p.id === selectedPoId);
 
+    const isPoUuid = po?.id && po.id.length > 20 && !po.id.startsWith('po-');
     const grnNum = `GRN-2026-${String(grnList.length + 1).padStart(3, '0')}`;
     const payload = {
       grn_number: grnNum,
-      po_id: po?.id || selectedPoId,
+      purchase_order_id: isPoUuid ? po.id : null,
+      po_id: isPoUuid ? po.id : null,
       po_number: po?.poNumber || 'PO-2026-001',
       vendor_name: po?.vendorName || 'General Supplier',
       received_date: receivedDate,
       remarks,
       status: 'Completed',
       items: grnItems.map((i) => {
-        const isValidUuid = i.itemId && i.itemId.length > 20 && !i.itemId.startsWith('poi-');
+        const isValidUuid = i.itemId && i.itemId.length > 20 && !i.itemId.startsWith('poi-') && !i.itemId.startsWith('grni-');
         return {
           item_id: isValidUuid ? i.itemId : null,
           item_code: i.itemCode || 'MED-001',
@@ -195,9 +216,10 @@ export const GoodsReceiptPage: React.FC = () => {
       }
 
       addToast('success', 'GRN Verified & Stock Inward Logged', `Saved Goods Receipt ${grnNum} and updated inventory inward stock.`);
-    } catch (err) {
+    } catch (err: any) {
       console.warn('API error saving GRN:', err);
-      addToast('error', 'Save Failed', 'Could not save Goods Receipt to database.');
+      const detailMsg = err?.message || 'Could not save Goods Receipt to database.';
+      addToast('error', 'Save Failed', detailMsg);
     }
     setIsCreateModalOpen(false);
   };
@@ -403,14 +425,24 @@ export const GoodsReceiptPage: React.FC = () => {
               <select
                 value={selectedPoId}
                 onChange={(e) => handlePoChange(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 outline-none"
+                disabled={unfulfilledPurchaseOrders.length === 0}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 outline-none disabled:opacity-60"
               >
-                {purchaseOrders.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.poNumber} - {p.vendorName}
-                  </option>
-                ))}
+                {unfulfilledPurchaseOrders.length > 0 ? (
+                  unfulfilledPurchaseOrders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.poNumber} - {p.vendorName} ({p.status || 'Pending Receipt'})
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No Pending / Unfulfilled Purchase Orders</option>
+                )}
               </select>
+              {unfulfilledPurchaseOrders.length === 0 && (
+                <p className="text-[10px] text-amber-600 font-semibold mt-1">
+                  All purchase orders have already been fulfilled & updated.
+                </p>
+              )}
             </div>
 
             <div>

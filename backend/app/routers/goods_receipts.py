@@ -17,10 +17,22 @@ from app.models.stock_movement import StockInward
 from app.schemas.goods_receipt import GoodsReceiptCreate, GoodsReceiptUpdate, GoodsReceiptOut
 from app.services.notification_service import notify_user_or_role
 
+import uuid
+
 router = APIRouter(prefix="/goods-receipts", tags=["Store: Goods Receipt (GRN)"])
 _perm_create = Depends(require_permission("Inventory & Store", "Create"))
 _perm_edit = Depends(require_permission("Inventory & Store", "Edit"))
 _perm_delete = Depends(require_permission("Inventory & Store", "Delete"))
+
+
+def _is_valid_uuid(val: str | None) -> bool:
+    if not val:
+        return False
+    try:
+        uuid.UUID(val)
+        return True
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 def _generate_unique_grn_number(db: Session, requested_grn_number: str | None = None) -> str:
@@ -56,68 +68,100 @@ def list_grns(db: Session = Depends(get_db), _=Depends(get_current_active_user))
 
 @router.post("", response_model=GoodsReceiptOut, status_code=status.HTTP_201_CREATED)
 def create_grn(payload: GoodsReceiptCreate, db: Session = Depends(get_db), _=Depends(get_current_active_user), _perm=_perm_create):
-    data = payload.model_dump(exclude={"items"})
-    data["grn_number"] = _generate_unique_grn_number(db, data.get("grn_number"))
+    raw_data = payload.model_dump(exclude={"items"})
+    raw_data["grn_number"] = _generate_unique_grn_number(db, raw_data.get("grn_number"))
 
-    grn_items = [GRNItem(**line.model_dump()) for line in payload.items]
-    grn = GoodsReceipt(**data, items=grn_items)
+    # Clean po_id and purchase_order_id
+    po_id = raw_data.pop("po_id", None)
+    if not raw_data.get("purchase_order_id") and po_id:
+        if _is_valid_uuid(po_id):
+            raw_data["purchase_order_id"] = po_id
+
+    if raw_data.get("purchase_order_id") and not _is_valid_uuid(raw_data["purchase_order_id"]):
+        raw_data["purchase_order_id"] = None
+
+    # Filter dictionary keys to match GoodsReceipt table columns only
+    valid_grn_cols = {c.name for c in GoodsReceipt.__table__.columns}
+    grn_data = {k: v for k, v in raw_data.items() if k in valid_grn_cols}
+
+    grn_items = []
+    valid_item_cols = {c.name for c in GRNItem.__table__.columns}
+    for line in payload.items:
+        line_dict = line.model_dump()
+        if line_dict.get("item_id") and not _is_valid_uuid(line_dict["item_id"]):
+            line_dict["item_id"] = None
+        clean_item_data = {k: v for k, v in line_dict.items() if k in valid_item_cols}
+        grn_items.append(GRNItem(**clean_item_data))
+
+    grn = GoodsReceipt(**grn_data, items=grn_items)
     db.add(grn)
 
     # Increment stock for accepted quantities against the item master
-    for line in payload.items:
+    for idx, line in enumerate(payload.items, start=1):
         item = None
-        if line.item_id:
+        item_id_val = line.item_id if _is_valid_uuid(line.item_id) else None
+        if item_id_val:
             try:
-                item = db.scalar(select(ItemMaster).where(ItemMaster.id == line.item_id))
+                item = db.scalar(select(ItemMaster).where(ItemMaster.id == item_id_val))
             except Exception:
-                pass
+                db.rollback()
+                item = None
         if not item and line.item_code:
-            item = db.scalar(select(ItemMaster).where(func.lower(ItemMaster.item_code) == line.item_code.lower()))
+            try:
+                item = db.scalar(select(ItemMaster).where(func.lower(ItemMaster.item_code) == line.item_code.lower()))
+            except Exception:
+                db.rollback()
+                item = None
         if not item and line.item_name:
-            item = db.scalar(select(ItemMaster).where(func.lower(ItemMaster.item_name) == line.item_name.lower()))
+            try:
+                item = db.scalar(select(ItemMaster).where(func.lower(ItemMaster.item_name) == line.item_name.lower()))
+            except Exception:
+                db.rollback()
+                item = None
 
         if item and line.accepted_quantity > 0:
             item.current_stock += line.accepted_quantity
 
         # Log Stock Inward receipt for store inventory management
-        batch_num = f"BAT-{data['grn_number']}-{line.item_code}"
+        code_str = line.item_code or f"ITEM{idx}"
+        batch_num = f"BAT-{grn_data['grn_number']}-{code_str}"
         stock_inw = StockInward(
-            inward_number=f"INW-{data['grn_number']}-{line.item_code}",
-            po_number=data.get("po_number") or "",
+            inward_number=f"INW-{grn_data['grn_number']}-{code_str}-{idx}",
+            po_number=grn_data.get("po_number") or "",
             item_id=item.id if item else None,
-            item_code=line.item_code,
-            item_name=line.item_name,
+            item_code=line.item_code or "ITEM",
+            item_name=line.item_name or "Item",
             quantity=line.accepted_quantity,
             unit_price=getattr(item, 'unit_price', 0.0) if item else 0.0,
             batch_number=batch_num,
             expiry_date="2027-12-31",
-            supplier=data.get("vendor_name", "Store Vendor"),
-            supplier_name=data.get("vendor_name", "Store Vendor"),
+            supplier=grn_data.get("vendor_name", "Store Vendor"),
+            supplier_name=grn_data.get("vendor_name", "Store Vendor"),
             warehouse="Central Store Bay 1",
             received_by="Store Officer",
-            date=data.get("received_date", today_str()),
-            branch=data.get("branch"),
+            date=grn_data.get("received_date", today_str()),
+            branch=grn_data.get("branch"),
         )
         db.add(stock_inw)
 
     # Close the loop on the PO lifecycle: once goods against a PO have been
     # received and verified, the PO is fulfilled.
-    if data.get("purchase_order_id"):
-        po = db.get(PurchaseOrder, data["purchase_order_id"])
-        if po and po.status == POStatus.Approved:
+    if grn_data.get("purchase_order_id"):
+        po = db.get(PurchaseOrder, grn_data["purchase_order_id"])
+        if po:
             po.status = POStatus.Fulfilled
 
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        data["grn_number"] = _generate_unique_grn_number(db, None)
-        grn = GoodsReceipt(**data, items=grn_items)
+        grn_data["grn_number"] = _generate_unique_grn_number(db, None)
+        grn = GoodsReceipt(**grn_data, items=grn_items)
         db.add(grn)
         db.commit()
 
     db.refresh(grn)
-    log_audit("POST /store/goods-receipts", payload, data, grn, grn)
+    log_audit("POST /store/goods-receipts", payload, grn_data, grn, grn)
     notify_user_or_role(
         db, title="Goods Receipt (GRN) Completed",
         message=f"GRN {grn.grn_number} verified & received. Stock inventory updated.",

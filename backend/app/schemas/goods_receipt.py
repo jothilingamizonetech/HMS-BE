@@ -32,6 +32,7 @@ class GoodsReceiptBase(BaseModel):
     vendor_name: str = Field("General Supplier", alias="vendorName")
     received_date: str | None = Field(None, alias="receivedDate")
     remarks: str | None = None
+    branch: str | None = None
 
 
 class GoodsReceiptCreate(GoodsReceiptBase):
