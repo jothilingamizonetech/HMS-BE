@@ -6,6 +6,7 @@ from app.core.config import settings
 from app.core.database import Base, engine
 import app.models  # noqa: F401 - ensures all models are registered on Base.metadata
 from app.seed.super_admin import seed_super_admin
+from app.seed.billing import seed_billing
 
 # Main Application Entry Point - HMS Backend
 from app.routers import (
@@ -26,6 +27,7 @@ from app.routers import (
     lab,
     pharmacy,
     staff,
+    billing,
 )
 
 
@@ -156,6 +158,7 @@ async def lifespan(app: FastAPI):
 
     try:
         seed_super_admin()
+        seed_billing()
     except Exception as e:
         print(f"Error seeding database on startup: {e}")
 
@@ -223,3 +226,4 @@ app.include_router(stock_movements.router, prefix=f"{api}/store")
 app.include_router(reorder_batch.router, prefix=f"{api}/store")
 app.include_router(lab.router, prefix=api)
 app.include_router(pharmacy.router, prefix=api)
+app.include_router(billing.router, prefix=api)

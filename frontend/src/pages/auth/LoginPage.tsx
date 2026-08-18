@@ -137,9 +137,19 @@ export const LoginPage: React.FC = () => {
                   const suggestedPw =
                     u.email === 'admin@hms.com' || roleStr === 'admin' || roleStr === 'super_admin'
                       ? 'admin123'
+                      : u.email === 'cashier@hms.com'
+                      ? 'cashier123'
+                      : roleStr.includes('billing')
+                      ? 'billing123'
+                      : roleStr === 'doctor'
+                      ? 'Doctor@123'
+                      : roleStr === 'reception'
+                      ? 'Reception@123'
+                      : roleStr === 'pharmacy'
+                      ? 'Pharma@123'
                       : roleStr === 'nurse'
                       ? 'nurse123'
-                      : 'ChangeMe@123';
+                      : 'admin123';
 
                   return (
                     <div

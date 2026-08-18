@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Stethoscope, Play, CheckCircle2, Printer, FileText, Plus,
   Trash2, Upload, X, Search, Inbox, Thermometer, Heart, Activity,
@@ -243,13 +244,13 @@ const EmptyState: React.FC<{ title?: string; message?: string; icon?: React.Reac
   </div>
 );
 
-const ConsultationSection: React.FC<{ label: string; children: React.ReactNode; className?: string; action?: React.ReactNode }> = ({ label, children, className = '', action }) => (
-  <div className={`bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden ${className}`}>
-    <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+const ConsultationSection: React.FC<{ label: string; children: React.ReactNode; className?: string; action?: React.ReactNode; style?: React.CSSProperties }> = ({ label, children, className = '', action, style }) => (
+  <div className={`bg-white rounded-2xl border border-slate-200 shadow-2xs relative overflow-visible ${className}`} style={style}>
+    <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50 rounded-t-2xl flex items-center justify-between">
       <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider">{label}</h3>
       {action}
     </div>
-    <div className="p-5">{children}</div>
+    <div className="p-5 overflow-visible relative">{children}</div>
   </div>
 );
 
@@ -404,6 +405,7 @@ export const ConsultationPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Scheduled' | 'In Progress' | 'Completed'>('All');
   const [selectedDateFilter, setSelectedDateFilter] = useState<string>('');
+  const diagInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch real appointments from backend
   useEffect(() => {
@@ -1310,8 +1312,8 @@ export const ConsultationPage: React.FC = () => {
             <button
               onClick={() => setSelectedDateFilter(new Date().toISOString().split('T')[0])}
               className={`px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${selectedDateFilter === new Date().toISOString().split('T')[0]
-                  ? 'bg-blue-600 text-white shadow-sm'
-                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
                 }`}
             >
               Today
@@ -1337,7 +1339,7 @@ export const ConsultationPage: React.FC = () => {
         </div>
 
         {/* ─── Full Screen Appointments Table ─────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">
@@ -1761,12 +1763,12 @@ export const ConsultationPage: React.FC = () => {
                         </div>
                         <span
                           className={`px-3 py-1 rounded-full text-[10px] font-extrabold ${matchingReport.doctorReviewStatus === 'Approved'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : matchingReport.doctorReviewStatus === 'Re-Test Requested'
-                                ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                                : matchingReport.doctorReviewStatus === 'Rejected'
-                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                                  : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : matchingReport.doctorReviewStatus === 'Re-Test Requested'
+                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                              : matchingReport.doctorReviewStatus === 'Rejected'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
                             }`}
                         >
                           Status: {matchingReport.doctorReviewStatus}
@@ -1809,10 +1811,10 @@ export const ConsultationPage: React.FC = () => {
                                     <td className="py-2.5 px-3">
                                       <span
                                         className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${flagVal === 'Critical'
-                                            ? 'bg-rose-100 text-rose-700'
-                                            : flagVal === 'High'
-                                              ? 'bg-amber-100 text-amber-800'
-                                              : 'bg-emerald-100 text-emerald-700'
+                                          ? 'bg-rose-100 text-rose-700'
+                                          : flagVal === 'High'
+                                            ? 'bg-amber-100 text-amber-800'
+                                            : 'bg-emerald-100 text-emerald-700'
                                           }`}
                                       >
                                         {flagVal}
@@ -2015,52 +2017,84 @@ export const ConsultationPage: React.FC = () => {
 
           {/* Diagnoses (ICD-10) */}
           <ConsultationSection label="Diagnoses (ICD-10)">
-            <div className="space-y-3">
+            <div className="space-y-4">
+              {/* Search Bar */}
               <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="text"
                   value={diagSearch}
                   onChange={(e) => setDiagSearch(e.target.value)}
-                  placeholder="Search ICD-10 code or diagnosis name..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="Search ICD-10 code or diagnosis name (e.g. Gastritis, Diabetes, Pneumonia)..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3.5 py-2.5 text-xs outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 font-medium text-slate-800"
                 />
-                {filteredDiagnoses.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-slate-200 z-20 max-h-40 overflow-y-auto">
-                    {filteredDiagnoses.map((d) => (
-                      <button
-                        key={d.code}
-                        onClick={() => handleAddDiagnosis(d.code, d.name)}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-blue-50 transition-colors cursor-pointer border-b border-slate-50 last:border-0"
-                      >
-                        <span className="font-bold text-blue-600">{d.code}</span> — {d.name}
-                      </button>
+              </div>
+
+              {/* Inline Search Results Panel (Expands Card Naturally - Cannot Be Cut Off!) */}
+              {diagSearch.trim().length > 0 && (
+                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <span>Matching ICD-10 Diagnoses ({filteredDiagnoses.length})</span>
+                    <span>Click card to add</span>
+                  </div>
+                  {filteredDiagnoses.length === 0 ? (
+                    <p className="text-xs text-slate-400 py-2 text-center">No matching ICD-10 diagnoses found for "{diagSearch}".</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-60 overflow-y-auto pr-1">
+                      {filteredDiagnoses.map((d) => (
+                        <button
+                          key={d.code}
+                          type="button"
+                          onClick={() => {
+                            handleAddDiagnosis(d.code, d.name);
+                          }}
+                          className="p-2.5 rounded-xl bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/80 transition-all cursor-pointer flex items-center justify-between text-left group shadow-2xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0 pr-2">
+                            <span className="font-extrabold text-blue-700 bg-blue-100/80 border border-blue-200 px-2 py-0.5 rounded-md text-[11px] shrink-0">
+                              {d.code}
+                            </span>
+                            <span className="font-semibold text-slate-800 text-xs truncate">{d.name}</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-blue-600 bg-blue-50 group-hover:bg-blue-600 group-hover:text-white px-2.5 py-1 rounded-lg transition-colors shrink-0 flex items-center gap-1">
+                            + Add
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Selected Diagnosis Badges */}
+              {diagnoses.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Assigned Diagnoses ({diagnoses.length})</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {diagnoses.map((d) => (
+                      <div key={d.id} className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50/80 border border-blue-200 shadow-2xs">
+                        <div className="flex items-center gap-2 min-w-0 pr-2">
+                          <span className="text-[10px] font-extrabold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md shrink-0">{d.code}</span>
+                          <p className="text-xs font-bold text-slate-900 truncate">{d.name}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setDiagnoses((prev) => prev.filter((item) => item.id !== d.id))}
+                          className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer rounded-lg hover:bg-rose-50 transition-colors shrink-0"
+                          title="Remove Diagnosis"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     ))}
                   </div>
-                )}
-              </div>
-              {diagnoses.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {diagnoses.map((d) => (
-                    <div key={d.id} className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50 border border-blue-200">
-                      <div>
-                        <span className="text-[10px] font-bold text-blue-600">{d.code}</span>
-                        <p className="text-xs font-bold text-slate-900">{d.name}</p>
-                      </div>
-                      <button
-                        onClick={() => setDiagnoses((prev) => prev.filter((item) => item.id !== d.id))}
-                        className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
           </ConsultationSection>
 
           {/* Prescription Form */}
-          <ConsultationSection label="Prescription Medicines">
+          <ConsultationSection label="Prescription Medicines" style={{ zIndex: 10 }}>
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
                 <div className="lg:col-span-2">
@@ -2329,12 +2363,12 @@ export const ConsultationPage: React.FC = () => {
                         </div>
                         <span
                           className={`px-3 py-1 rounded-full text-[10px] font-extrabold ${matchingReport.doctorReviewStatus === 'Approved'
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
-                              : matchingReport.doctorReviewStatus === 'Re-Test Requested'
-                                ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                                : matchingReport.doctorReviewStatus === 'Rejected'
-                                  ? 'bg-rose-100 text-rose-800 border border-rose-200'
-                                  : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : matchingReport.doctorReviewStatus === 'Re-Test Requested'
+                              ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                              : matchingReport.doctorReviewStatus === 'Rejected'
+                                ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200 animate-pulse'
                             }`}
                         >
                           Status: {matchingReport.doctorReviewStatus}
@@ -2365,10 +2399,10 @@ export const ConsultationPage: React.FC = () => {
                                   <td className="py-2.5 px-3">
                                     <span
                                       className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${r.flag === 'Critical'
-                                          ? 'bg-rose-100 text-rose-700'
-                                          : r.flag === 'High'
-                                            ? 'bg-amber-100 text-amber-800'
-                                            : 'bg-emerald-100 text-emerald-700'
+                                        ? 'bg-rose-100 text-rose-700'
+                                        : r.flag === 'High'
+                                          ? 'bg-amber-100 text-amber-800'
+                                          : 'bg-emerald-100 text-emerald-700'
                                         }`}
                                     >
                                       {r.flag || 'Normal'}
@@ -2552,8 +2586,8 @@ export const ConsultationPage: React.FC = () => {
                               <td className="py-3 px-3.5">
                                 <span
                                   className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${r.flag === 'Critical' || r.flag === 'High'
-                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                      : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                    ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                    : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
                                     }`}
                                 >
                                   {r.flag || 'High'}
@@ -2592,8 +2626,8 @@ export const ConsultationPage: React.FC = () => {
                     </span>
                     <span
                       className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${popupStatus === 'Re-Test Requested'
-                          ? 'bg-purple-100 text-purple-800 border border-purple-200'
-                          : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                        ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                        : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                         }`}
                     >
                       {popupStatus}

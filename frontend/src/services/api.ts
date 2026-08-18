@@ -2075,4 +2075,76 @@ export async function fetchNursesApi(branch?: string): Promise<any[]> {
   return apiRequest<any[]>(`/staff/nurses${query}`);
 }
 
+// ==========================================
+// Billing & Revenue Management API Services
+// ==========================================
+
+export async function fetchBillingKPIsApi(): Promise<any> {
+  return apiRequest('/billing/kpis');
+}
+
+export async function fetchBillsApi(filters?: { bill_type?: string; payment_status?: string; search?: string }): Promise<any[]> {
+  const queryParams = new URLSearchParams();
+  if (filters?.bill_type) queryParams.append('bill_type', filters.bill_type);
+  if (filters?.payment_status) queryParams.append('payment_status', filters.payment_status);
+  if (filters?.search) queryParams.append('search', filters.search);
+  
+  const queryStr = queryParams.toString();
+  const url = queryStr ? `/billing/bills?${queryStr}` : '/billing/bills';
+  return apiRequest<any[]>(url);
+}
+
+export async function createBillApi(payload: any): Promise<any> {
+  return apiRequest('/billing/bills', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchPaymentCollectionsApi(): Promise<any[]> {
+  return apiRequest<any[]>('/billing/payments');
+}
+
+export async function recordPaymentCollectionApi(payload: any): Promise<any> {
+  return apiRequest('/billing/payments', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchDiscountRequestsApi(): Promise<any[]> {
+  return apiRequest<any[]>('/billing/discounts');
+}
+
+export async function createDiscountRequestApi(payload: any): Promise<any> {
+  return apiRequest('/billing/discounts', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchRefundRequestsApi(): Promise<any[]> {
+  return apiRequest<any[]>('/billing/refunds');
+}
+
+export async function createRefundRequestApi(payload: any): Promise<any> {
+  return apiRequest('/billing/refunds', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchBillCancellationsApi(): Promise<any[]> {
+  return apiRequest<any[]>('/billing/cancellations');
+}
+
+export async function fetchSupplierPayablesApi(): Promise<any[]> {
+  return apiRequest<any[]>('/billing/supplier-payables');
+}
+
+export async function fetchBillingAuditLogsApi(): Promise<any[]> {
+  return apiRequest<any[]>('/billing/audit-logs');
+}
+
+
 

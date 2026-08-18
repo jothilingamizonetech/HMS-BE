@@ -665,7 +665,7 @@ export const SuperAdminDashboard: React.FC = () => {
                 <option value="store">Store Manager</option>
                 <option value="lab">Lab Technician</option>
                 <option value="pharmacy">Pharmacist</option>
-                <option value="cashier">Cashier</option>
+                <option value="billing">Billing Management</option>
                 <option value="super_admin">Super Admin</option>
                 {roles
                   .filter((r) => !['doctor', 'nurse', 'receptionist', 'reception', 'store manager', 'store', 'lab technician', 'lab', 'pharmacist', 'pharmacy', 'cashier', 'super admin', 'super_admin', 'admin'].includes(r.roleName.toLowerCase()))

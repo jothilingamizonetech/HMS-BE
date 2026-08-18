@@ -108,6 +108,25 @@ import { PharmacyLeavePage } from './pages/pharmacy/PharmacyLeavePage';
 import { PatientBookingPage } from './pages/patient/PatientBookingPage';
 import { PatientAppointmentHistoryPage } from './pages/patient/PatientAppointmentHistoryPage';
 
+// Billing Module Components
+import { BillingLayout } from './pages/billing/BillingLayout';
+import { BillingDashboard } from './pages/billing/BillingDashboard';
+import { AllBillsPage } from './pages/billing/invoices/AllBillsPage';
+import { CreateBillPage } from './pages/billing/invoices/CreateBillPage';
+import { OPDBillingPage } from './pages/billing/invoices/OPDBillingPage';
+import { IPDBillingPage } from './pages/billing/invoices/IPDBillingPage';
+import { LabBillingPage } from './pages/billing/invoices/LabBillingPage';
+import { PharmacyBillingPage } from './pages/billing/invoices/PharmacyBillingPage';
+import { ProcedureBillingPage } from './pages/billing/invoices/ProcedureBillingPage';
+import { PaymentCollectionPage } from './pages/billing/payments/PaymentCollectionPage';
+import { ReceiptsPage } from './pages/billing/payments/ReceiptsPage';
+import { OutstandingDuesPage } from './pages/billing/payments/OutstandingDuesPage';
+import { DiscountsPage } from './pages/billing/financial/DiscountsPage';
+import { RefundsPage } from './pages/billing/financial/RefundsPage';
+import { CancellationsPage } from './pages/billing/financial/CancellationsPage';
+import { SupplierPayablesPage } from './pages/billing/financial/SupplierPayablesPage';
+import { FinancialReportsPage } from './pages/billing/reports/FinancialReportsPage';
+
 // Route Guard Component with Role Access Control
 const ProtectedRoute: React.FC<{ children: React.ReactNode; allowedRoles?: string[] }> = ({ children, allowedRoles }) => {
   const { user, isAuthenticated } = useAuth();
@@ -340,6 +359,34 @@ export default function App() {
 
                       {/* IPD Monitoring */}
                       <Route path="ipd/bed-occupancy" element={<BedOccupancyDashboardPage />} />
+                    </Route>
+
+                    {/* Protected Billing & Revenue Management Routes */}
+                    <Route
+                      path="/billing"
+                      element={
+                        <ProtectedRoute allowedRoles={['billing', 'billing_manager', 'cashier', 'finance', 'admin', 'super_admin', 'superadmin']}>
+                          <BillingLayout />
+                        </ProtectedRoute>
+                      }
+                    >
+                      <Route index element={<Navigate to="/billing/dashboard" replace />} />
+                      <Route path="dashboard" element={<BillingDashboard />} />
+                      <Route path="invoices" element={<AllBillsPage />} />
+                      <Route path="create" element={<CreateBillPage />} />
+                      <Route path="opd" element={<OPDBillingPage />} />
+                      <Route path="ipd" element={<IPDBillingPage />} />
+                      <Route path="lab" element={<LabBillingPage />} />
+                      <Route path="pharmacy" element={<PharmacyBillingPage />} />
+                      <Route path="procedure" element={<ProcedureBillingPage />} />
+                      <Route path="payments" element={<PaymentCollectionPage />} />
+                      <Route path="receipts" element={<ReceiptsPage />} />
+                      <Route path="outstanding" element={<OutstandingDuesPage />} />
+                      <Route path="discounts" element={<DiscountsPage />} />
+                      <Route path="refunds" element={<RefundsPage />} />
+                      <Route path="cancellations" element={<CancellationsPage />} />
+                      <Route path="supplier-payables" element={<SupplierPayablesPage />} />
+                      <Route path="reports" element={<FinancialReportsPage />} />
                     </Route>
 
                     {/* Catch All Redirect */}

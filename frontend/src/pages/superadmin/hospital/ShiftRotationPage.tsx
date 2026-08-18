@@ -313,7 +313,7 @@ export const ShiftRotationPage: React.FC = () => {
                 <option value="store">Store Manager</option>
                 <option value="lab">Lab Technician</option>
                 <option value="pharmacy">Pharmacist</option>
-                <option value="cashier">Cashier</option>
+                <option value="billing">Billing Staff</option>
               </select>
             </div>
 

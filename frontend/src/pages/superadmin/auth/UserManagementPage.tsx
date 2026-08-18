@@ -30,7 +30,7 @@ const DEFAULT_SYSTEM_ROLES: RoleItem[] = [
   { id: 'role-store', roleName: 'Store', roleCode: 'STORE', isSystemDefault: true, description: 'Inventory / Purchase Orders', assignedUserCount: 0, permissionsCount: 0, status: 'Active' },
   { id: 'role-lab', roleName: 'Lab', roleCode: 'LAB', isSystemDefault: true, description: 'Pathology & Diagnostic Labs', assignedUserCount: 0, permissionsCount: 0, status: 'Active' },
   { id: 'role-pharmacy', roleName: 'Pharmacy', roleCode: 'PHARMACY', isSystemDefault: true, description: 'Pharmacy Dispensing & Medicine Stock', assignedUserCount: 0, permissionsCount: 0, status: 'Active' },
-  { id: 'role-cashier', roleName: 'Cashier', roleCode: 'CASHIER', isSystemDefault: true, description: 'Billing & Cash Collection Counter', assignedUserCount: 0, permissionsCount: 0, status: 'Active' },
+  { id: 'role-cashier', roleName: 'Billing Management', roleCode: 'BILLING', isSystemDefault: true, description: 'Hospital Financial Transactions & Billing Management', assignedUserCount: 0, permissionsCount: 0, status: 'Active' },
   { id: 'role-superadmin', roleName: 'Super Admin', roleCode: 'SUPER_ADMIN', isSystemDefault: true, description: 'System Administrator / Global Privileges', assignedUserCount: 0, permissionsCount: 0, status: 'Active' },
 ];
 

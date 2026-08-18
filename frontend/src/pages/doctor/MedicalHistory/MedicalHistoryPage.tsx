@@ -919,7 +919,7 @@ export const MedicalHistoryPage: React.FC = () => {
         </div>
 
         {/* ─── Full Screen IPD Inpatient Table ───────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50/80 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-200">

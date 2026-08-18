@@ -6,6 +6,9 @@ export function getDefaultRouteForRole(role?: string, name?: string): string {
   const r = (role || '').toLowerCase().replace('userrole.', '').trim();
   const n = (name || '').toLowerCase().trim();
 
+  if (r.includes('billing') || r.includes('finance') || r.includes('cashier') || n.includes('billing') || n.includes('finance')) {
+    return '/billing/dashboard';
+  }
   if (r.includes('pharmacy') || r.includes('pharmacist') || n.includes('pharmacy')) {
     return '/pharmacy/dashboard';
   }

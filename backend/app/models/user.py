@@ -18,6 +18,8 @@ class UserRole(str, enum.Enum):
     store = "store"
     store_manager = "store_manager"
     super_admin = "super_admin"
+    billing = "billing"
+    billing_manager = "billing_manager"
 
 
 class User(UUIDPKMixin, TimestampMixin, Base):

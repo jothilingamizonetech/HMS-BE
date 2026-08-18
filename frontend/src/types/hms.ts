@@ -9,7 +9,9 @@ export type UserRole =
   | 'admin'
   | 'patient'
   | 'store'
-  | 'store_manager';
+  | 'store_manager'
+  | 'billing'
+  | 'billing_manager';
 
 export interface User {
   id: string;
