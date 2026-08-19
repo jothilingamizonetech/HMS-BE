@@ -217,7 +217,7 @@ const SystemOverview: React.FC = () => {
   const resetTilt = () => setTilt({ x: 0, y: 0 });
 
   return (
-    <section id="overview" className="py-20 bg-white border-t border-slate-100 overflow-hidden">
+    <section id="overview" className="relative overflow-hidden bg-white border-t border-slate-100 min-h-[calc(100vh-5rem)] min-h-[calc(100dvh-5rem)] flex flex-col justify-center py-12 lg:py-0 w-full">
       <style>{`
         @keyframes hms-ov-float {
           0%, 100% { transform: translateY(0px); }
@@ -234,9 +234,9 @@ const SystemOverview: React.FC = () => {
           opacity: visible ? 1 : 0,
           transform: visible ? 'translateY(0)' : 'translateY(24px)',
         }}
-        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-700 ease-out"
+        className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-700 ease-out my-auto w-full"
       >
-        <div className="grid lg:grid-cols-12 gap-14 lg:gap-16 items-center">
+        <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-center">
           {/* Left — 3D live dashboard mockup */}
           <div className="lg:col-span-6 order-2 lg:order-1">
             <div
@@ -836,15 +836,15 @@ export const LandingPage: React.FC = () => {
       <Navbar />
 
       {/* Hero Section */}
-      <section id="hero" className="relative overflow-hidden bg-gradient-to-b from-cyan-50/60 via-blue-50/40 to-white pt-10 pb-0 lg:pt-16 lg:pb-0 min-h-[580px] lg:min-h-[640px] flex flex-col justify-between">
+      <section id="hero" className="relative overflow-hidden bg-gradient-to-b from-cyan-50/60 via-blue-50/40 to-white min-h-[calc(100vh-5rem)] min-h-[calc(100dvh-5rem)] flex flex-col justify-center py-6 sm:py-8 lg:py-0">
         {/* Background Decorative Graphic Blobs */}
         <div className="absolute top-1/4 left-1/3 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-tr from-cyan-200/40 to-blue-300/30 rounded-full blur-3xl -z-10 pointer-events-none" />
 
         {/* Left Content Container */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10">
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-end">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full relative z-10 my-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
             {/* Hero Text Content */}
-            <div className="lg:col-span-7 space-y-6 text-center lg:text-left pb-10 lg:pb-20 pt-4">
+            <div className="lg:col-span-7 space-y-5 sm:space-y-6 text-center lg:text-left py-4 lg:py-10">
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-100/80 border border-blue-200 text-blue-800 text-xs font-semibold shadow-2xs">
                 <Sparkles className="w-4 h-4 text-blue-600 animate-spin" />
                 <span>Next-Gen Smart Healthcare Operations</span>
@@ -901,21 +901,21 @@ export const LandingPage: React.FC = () => {
               <img
                 src="/hms_landing_img1.png"
                 alt="Smart Hospital Management System"
-                className="w-full h-auto max-h-[440px] sm:max-h-[480px] object-contain object-bottom drop-shadow-2xl"
+                className="w-full h-auto max-h-[400px] sm:max-h-[440px] object-contain object-bottom drop-shadow-2xl"
                 style={{ mixBlendMode: 'multiply' }}
               />
             </div>
           </div>
         </div>
 
-        {/* Desktop Image Visual - Flush to Screen Right End (0) and Bottom (0) with reduced top height */}
+        {/* Desktop Image Visual - Flush to Screen Right End (0) and Bottom (0) */}
         <div className="hidden lg:flex absolute right-0 bottom-0 top-0 w-1/2 max-w-[580px] xl:max-w-[660px] 2xl:max-w-[740px] items-end justify-end pointer-events-none z-0">
           <div className="relative w-full h-full flex items-end justify-end">
             <div className="absolute right-0 bottom-0 w-[85%] h-[85%] bg-gradient-to-tr from-cyan-300/30 via-blue-400/20 to-indigo-300/25 rounded-full blur-3xl -z-10" />
             <img
               src="/hms_landing_img1.png"
               alt="Smart Hospital Management System"
-              className="w-full h-auto max-h-[520px] lg:max-h-[550px] xl:max-h-[600px] 2xl:max-h-[640px] object-contain object-right-bottom drop-shadow-2xl hover:scale-[1.015] transition-transform duration-300 pointer-events-auto block"
+              className="w-full h-auto max-h-[calc(100dvh-7rem)] lg:max-h-[calc(100dvh-6rem)] object-contain object-right-bottom drop-shadow-2xl hover:scale-[1.015] transition-transform duration-300 pointer-events-auto block"
               style={{ mixBlendMode: 'multiply' }}
             />
           </div>
@@ -926,10 +926,10 @@ export const LandingPage: React.FC = () => {
       <SystemOverview />
 
       {/* How It Works - Staggered 4-Step Patient Journey Section */}
-      <section id="how-it-works" className="relative py-16 sm:py-20 bg-slate-50/70 border-y border-slate-200/80 overflow-hidden">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
+      <section id="how-it-works" className="relative overflow-hidden bg-slate-50/70 border-y border-slate-200/80 min-h-[calc(100vh-5rem)] min-h-[calc(100dvh-5rem)] flex flex-col justify-center py-12 lg:py-0 w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 my-auto w-full">
           {/* Section Header */}
-          <div className="text-center max-w-2xl mx-auto mb-14 space-y-2">
+          <div className="text-center max-w-2xl mx-auto mb-10 lg:mb-14 space-y-2">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-semibold shadow-2xs">
               <Sparkles className="w-3.5 h-3.5 text-blue-600" />
               <span>How It Works</span>
@@ -1134,9 +1134,9 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* Role-Based Modules Grid — 7 core hospital roles */}
-      <section id="about" className="py-20 bg-white border-t border-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-10 space-y-3">
+      <section id="about" className="relative overflow-hidden bg-white border-t border-slate-100 min-h-[calc(100vh-5rem)] min-h-[calc(100dvh-5rem)] flex flex-col justify-center py-12 lg:py-0 w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 my-auto w-full">
+          <div className="text-center max-w-3xl mx-auto mb-8 lg:mb-10 space-y-3">
             <span className="text-xs font-bold text-blue-600 uppercase tracking-wider bg-blue-50 px-3 py-1 rounded-full border border-blue-100">
               Core Architecture
             </span>
@@ -1153,9 +1153,9 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* Departments Section */}
-      <section id="departments" className="py-20 bg-slate-100/70 border-t border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center max-w-3xl mx-auto mb-16 space-y-3">
+      <section id="departments" className="relative overflow-hidden bg-slate-100/70 border-t border-slate-200 min-h-[calc(100vh-5rem)] min-h-[calc(100dvh-5rem)] flex flex-col justify-center py-12 lg:py-0 w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 my-auto w-full">
+          <div className="text-center max-w-3xl mx-auto mb-10 lg:mb-14 space-y-3">
             <span className="text-xs font-bold text-indigo-600 uppercase tracking-wider bg-indigo-50 px-3 py-1 rounded-full border border-indigo-100">
               Specialties
             </span>
@@ -1176,8 +1176,8 @@ export const LandingPage: React.FC = () => {
       </section>
 
       {/* Contact Section */}
-      <section id="contact" className="py-20 bg-white border-t border-slate-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section id="contact" className="relative overflow-hidden bg-white border-t border-slate-100 min-h-[calc(100vh-5rem)] min-h-[calc(100dvh-5rem)] flex flex-col justify-center py-12 lg:py-0 w-full">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 my-auto w-full">
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
             <div className="lg:col-span-5 space-y-6">
               <span className="text-xs font-bold text-blue-600 uppercase tracking-wider bg-blue-50 px-3 py-1 rounded-full border border-blue-100">

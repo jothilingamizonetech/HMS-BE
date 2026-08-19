@@ -53,7 +53,7 @@ export const Header: React.FC<HeaderProps> = ({ setMobileSidebarOpen }) => {
   };
 
   return (
-    <header className="h-20 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+    <header className="h-20 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs shrink-0">
       {/* Left: Mobile Toggle & Search */}
       <div className="flex items-center gap-4 flex-1 max-w-xl">
         <button

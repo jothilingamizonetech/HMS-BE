@@ -64,8 +64,8 @@ export const PharmacySidebar: React.FC<PharmacySidebarProps> = ({ mobileOpen, se
 
       {/* Sidebar Navigation */}
       <aside
-        className={`fixed top-0 left-0 bottom-0 h-screen z-40 w-64 bg-white border-r border-slate-200/80 flex flex-col transition-transform duration-300 ${
-          mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full lg:translate-x-0'
+        className={`fixed top-0 left-0 bottom-0 z-50 w-64 bg-white border-r border-slate-200/80 flex flex-col transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 shrink-0 ${
+          mobileOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'
         }`}
       >
         {/* Brand Header */}

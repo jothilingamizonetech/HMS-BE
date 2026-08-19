@@ -40,17 +40,17 @@ const InnerBillingLayout: React.FC = () => {
   });
 
   return (
-    <div className="min-h-screen bg-slate-100 flex font-sans text-slate-800">
+    <div className="h-screen bg-slate-100 flex font-sans text-slate-800 overflow-hidden">
       {/* Billing Sidebar (Light theme matching Reception & Doctor modules) */}
       <BillingSidebar mobileOpen={mobileSidebarOpen} setMobileOpen={setMobileSidebarOpen} />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Global HMS Top Bar */}
         <Header setMobileSidebarOpen={setMobileSidebarOpen} />
 
         {/* Dedicated Billing Top Info Header Banner (Matching Receptionist & Doctor Module Aesthetic) */}
-        <div className="bg-white text-slate-800 border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-3.5 shadow-2xs">
+        <div className="bg-white text-slate-800 border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-3.5 shadow-2xs shrink-0">
           <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 shadow-2xs">

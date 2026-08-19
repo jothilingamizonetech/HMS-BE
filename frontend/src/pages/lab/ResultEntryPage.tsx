@@ -863,10 +863,10 @@ export const ResultEntryPage: React.FC = () => {
 
       {/* MODAL 2: BATCH MULTI-TEST RESULT ENTRY MODAL */}
       {isBatchEntryModalOpen && selectedOrder && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-6xl w-full p-6 space-y-6 shadow-2xl border border-slate-100 my-8 animate-scale-up">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-3xl max-w-6xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-100 animate-scale-up overflow-hidden">
+            {/* Modal Header - Fixed at Top */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0 bg-slate-50/50">
               <div>
                 <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2.5 py-0.5 rounded-full uppercase border border-amber-200">
                   Batch Multi-Test OP Register
@@ -877,167 +877,171 @@ export const ResultEntryPage: React.FC = () => {
               </div>
               <button
                 onClick={() => setIsBatchEntryModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 cursor-pointer"
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* COMMON HEADER: PATIENT NAME & UHID INFORMATION */}
-            <div className="bg-blue-50/70 p-4 rounded-2xl border border-blue-200/80 flex flex-wrap items-center justify-between gap-4 text-xs">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shrink-0">
-                  <User className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-black text-slate-900">{selectedOrder.patientName}</h4>
-                  <p className="text-xs font-bold text-blue-700">
-                    UHID: <span className="underline">{selectedOrder.patientUhid}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-4 text-slate-700 font-medium">
-                <div>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Sample ID</span>
-                  <span className="font-mono font-bold text-slate-900">{selectedOrder.sampleId}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Age / Gender</span>
-                  <span className="font-bold text-slate-900">{selectedOrder.age} Yrs / {selectedOrder.gender}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Blood Group</span>
-                  <span className="font-bold text-rose-600 bg-rose-100/80 px-2 py-0.5 rounded border border-rose-200">{selectedOrder.bloodGroup || 'O+'}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase block">Referring Doctor</span>
-                  <span className="font-bold text-slate-900">{selectedOrder.doctorName}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* OPD Doctor Clinical Instructions Banner (if any) */}
-            {(() => {
-              const matchingReport = labReports.find(
-                (r) =>
-                  r.patientUhid.toLowerCase() === selectedOrder.patientUhid.toLowerCase() ||
-                  r.patientName.toLowerCase() === selectedOrder.patientName.toLowerCase()
-              );
-
-              if (matchingReport && matchingReport.doctorComments) {
-                return (
-                  <div className="p-3.5 bg-purple-50 border border-purple-200 rounded-2xl text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-purple-900 flex items-center gap-1.5">
-                        👨‍⚕️ Attending Doctor Instructions:
-                      </span>
-                      <span className="text-[10px] font-bold bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full">
-                        Status: {matchingReport.doctorReviewStatus}
-                      </span>
+            {/* Form Container */}
+            <form onSubmit={(e) => handleSaveBatchResults(e, false)} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Scrollable Form Body - Internal Scroll */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 text-xs custom-scrollbar">
+                {/* COMMON HEADER: PATIENT NAME & UHID INFORMATION */}
+                <div className="bg-blue-50/70 p-4 rounded-2xl border border-blue-200/80 flex flex-wrap items-center justify-between gap-4 text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold shrink-0">
+                      <User className="w-5 h-5" />
                     </div>
-                    <p className="text-purple-800 font-medium leading-relaxed">{matchingReport.doctorComments}</p>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-900">{selectedOrder.patientName}</h4>
+                      <p className="text-xs font-bold text-blue-700">
+                        UHID: <span className="underline">{selectedOrder.patientUhid}</span>
+                      </p>
+                    </div>
                   </div>
-                );
-              }
-              return null;
-            })()}
 
-            {/* FORM TABLE FOR SIMULTANEOUS MULTI-TEST RESULT ENTRY */}
-            <form onSubmit={(e) => handleSaveBatchResults(e, false)} className="space-y-6">
-              <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse">
-                    <thead>
-                      <tr className="bg-slate-100 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
-                        <th className="py-3 px-4 min-w-[200px] w-1/5">Test Name (Leftside)</th>
-                        <th className="py-3 px-3 w-36">Result Value *</th>
-                        <th className="py-3 px-3 w-28">Unit</th>
-                        <th className="py-3 px-3 w-44">Reference Range</th>
-                        <th className="py-3 px-3 w-36">Result Flag</th>
-                        <th className="py-3 px-3 min-w-[280px]">Technician Notes & Observations</th>
-                      </tr>
-                    </thead>
+                  <div className="flex flex-wrap items-center gap-4 text-slate-700 font-medium">
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block">Sample ID</span>
+                      <span className="font-mono font-bold text-slate-900">{selectedOrder.sampleId}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block">Age / Gender</span>
+                      <span className="font-bold text-slate-900">{selectedOrder.age} Yrs / {selectedOrder.gender}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block">Blood Group</span>
+                      <span className="font-bold text-rose-600 bg-rose-100/80 px-2 py-0.5 rounded border border-rose-200">{selectedOrder.bloodGroup || 'O+'}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-500 font-bold uppercase block">Referring Doctor</span>
+                      <span className="font-bold text-slate-900">{selectedOrder.doctorName}</span>
+                    </div>
+                  </div>
+                </div>
 
-                    <tbody className="divide-y divide-slate-100 text-xs bg-white">
-                      {batchFormData.map((row, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
-                          <td className="py-3.5 px-4 align-top">
-                            <div className="flex items-center gap-2">
-                              <FlaskConical className="w-4 h-4 text-cyan-600 shrink-0" />
-                              <div>
-                                <p className="font-bold text-slate-900">{row.testName}</p>
-                                <p className="text-[10px] text-slate-400 font-mono">{row.testCode}</p>
-                              </div>
-                            </div>
-                          </td>
+                {/* OPD Doctor Clinical Instructions Banner (if any) */}
+                {(() => {
+                  const matchingReport = labReports.find(
+                    (r) =>
+                      r.patientUhid.toLowerCase() === selectedOrder.patientUhid.toLowerCase() ||
+                      r.patientName.toLowerCase() === selectedOrder.patientName.toLowerCase()
+                  );
 
-                          <td className="py-3.5 px-3 align-top">
-                            <input
-                              type="text"
-                              placeholder="Enter value"
-                              value={row.resultValue}
-                              onChange={(e) => handleBatchFieldChange(idx, 'resultValue', e.target.value)}
-                              className="w-full bg-white border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 shadow-2xs"
-                            />
-                          </td>
+                  if (matchingReport && matchingReport.doctorComments) {
+                    return (
+                      <div className="p-3.5 bg-purple-50 border border-purple-200 rounded-2xl text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-purple-900 flex items-center gap-1.5">
+                            👨‍⚕️ Attending Doctor Instructions:
+                          </span>
+                          <span className="text-[10px] font-bold bg-purple-200 text-purple-800 px-2.5 py-0.5 rounded-full">
+                            Status: {matchingReport.doctorReviewStatus}
+                          </span>
+                        </div>
+                        <p className="text-purple-800 font-medium leading-relaxed">{matchingReport.doctorComments}</p>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
 
-                          <td className="py-3.5 px-3 align-top">
-                            <input
-                              type="text"
-                              value={row.unit}
-                              onChange={(e) => handleBatchFieldChange(idx, 'unit', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700"
-                            />
-                          </td>
-
-                          <td className="py-3.5 px-3 align-top">
-                            <input
-                              type="text"
-                              value={row.referenceRange}
-                              onChange={(e) => handleBatchFieldChange(idx, 'referenceRange', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700"
-                            />
-                          </td>
-
-                          <td className="py-3.5 px-3 align-top">
-                            <select
-                              value={row.flag}
-                              onChange={(e) => handleBatchFieldChange(idx, 'flag', e.target.value as ResultFlag)}
-                              className={`w-full border rounded-xl px-2.5 py-2 text-xs font-bold focus:outline-none ${row.flag === 'Critical'
-                                  ? 'bg-rose-50 border-rose-300 text-rose-700'
-                                  : row.flag === 'High'
-                                    ? 'bg-amber-50 border-amber-300 text-amber-800'
-                                    : row.flag === 'Low'
-                                      ? 'bg-blue-50 border-blue-300 text-blue-800'
-                                      : 'bg-slate-50 border-slate-200 text-slate-800'
-                                }`}
-                            >
-                              <option value="Normal">Normal</option>
-                              <option value="High">High</option>
-                              <option value="Low">Low</option>
-                              <option value="Critical">Critical Alert</option>
-                            </select>
-                          </td>
-
-                          <td className="py-3.5 px-3 align-top">
-                            <input
-                              type="text"
-                              placeholder="Enter technical notes, observations, or microscope findings..."
-                              value={row.notes}
-                              onChange={(e) => handleBatchFieldChange(idx, 'notes', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white rounded-xl px-3 py-2 text-xs font-medium text-slate-800 transition-colors"
-                            />
-                          </td>
+                {/* FORM TABLE FOR SIMULTANEOUS MULTI-TEST RESULT ENTRY */}
+                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 border-b border-slate-200 text-[11px] font-bold text-slate-600 uppercase tracking-wider">
+                          <th className="py-3 px-4 min-w-[200px] w-1/5">Test Name (Leftside)</th>
+                          <th className="py-3 px-3 w-36">Result Value *</th>
+                          <th className="py-3 px-3 w-28">Unit</th>
+                          <th className="py-3 px-3 w-44">Reference Range</th>
+                          <th className="py-3 px-3 w-36">Result Flag</th>
+                          <th className="py-3 px-3 min-w-[280px]">Technician Notes & Observations</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+
+                      <tbody className="divide-y divide-slate-100 text-xs bg-white">
+                        {batchFormData.map((row, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition-colors">
+                            <td className="py-3.5 px-4 align-top">
+                              <div className="flex items-center gap-2">
+                                <FlaskConical className="w-4 h-4 text-cyan-600 shrink-0" />
+                                <div>
+                                  <p className="font-bold text-slate-900">{row.testName}</p>
+                                  <p className="text-[10px] text-slate-400 font-mono">{row.testCode}</p>
+                                </div>
+                              </div>
+                            </td>
+
+                            <td className="py-3.5 px-3 align-top">
+                              <input
+                                type="text"
+                                placeholder="Enter value"
+                                value={row.resultValue}
+                                onChange={(e) => handleBatchFieldChange(idx, 'resultValue', e.target.value)}
+                                className="w-full bg-white border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-3 py-2 text-xs font-bold text-slate-900 shadow-2xs"
+                              />
+                            </td>
+
+                            <td className="py-3.5 px-3 align-top">
+                              <input
+                                type="text"
+                                value={row.unit}
+                                onChange={(e) => handleBatchFieldChange(idx, 'unit', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700"
+                              />
+                            </td>
+
+                            <td className="py-3.5 px-3 align-top">
+                              <input
+                                type="text"
+                                value={row.referenceRange}
+                                onChange={(e) => handleBatchFieldChange(idx, 'referenceRange', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700"
+                              />
+                            </td>
+
+                            <td className="py-3.5 px-3 align-top">
+                              <select
+                                value={row.flag}
+                                onChange={(e) => handleBatchFieldChange(idx, 'flag', e.target.value as ResultFlag)}
+                                className={`w-full border rounded-xl px-2.5 py-2 text-xs font-bold focus:outline-none ${row.flag === 'Critical'
+                                    ? 'bg-rose-50 border-rose-300 text-rose-700'
+                                    : row.flag === 'High'
+                                      ? 'bg-amber-50 border-amber-300 text-amber-800'
+                                      : row.flag === 'Low'
+                                        ? 'bg-blue-50 border-blue-300 text-blue-800'
+                                        : 'bg-slate-50 border-slate-200 text-slate-800'
+                                  }`}
+                              >
+                                <option value="Normal">Normal</option>
+                                <option value="High">High</option>
+                                <option value="Low">Low</option>
+                                <option value="Critical">Critical Alert</option>
+                              </select>
+                            </td>
+
+                            <td className="py-3.5 px-3 align-top">
+                              <input
+                                type="text"
+                                placeholder="Enter technical notes, observations, or microscope findings..."
+                                value={row.notes}
+                                onChange={(e) => handleBatchFieldChange(idx, 'notes', e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 focus:border-blue-500 focus:bg-white rounded-xl px-3 py-2 text-xs font-medium text-slate-800 transition-colors"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
 
-              {/* Form Action Footer */}
-              <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+              {/* Form Action Footer - Fixed at Bottom */}
+              <div className="px-5 sm:px-6 py-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0 bg-slate-50/50">
                 <span className="text-xs text-slate-500 font-medium">
                   Saving will submit test results for all <strong className="text-slate-900">{batchFormData.length}</strong> tests simultaneously.
                 </span>
@@ -1064,7 +1068,7 @@ export const ResultEntryPage: React.FC = () => {
                   {/* Save Button */}
                   <button
                     type="submit"
-                    className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer flex items-center gap-2"
+                    className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
                   >
                     <Save className="w-4 h-4" /> Save
                   </button>
@@ -1077,11 +1081,12 @@ export const ResultEntryPage: React.FC = () => {
 
       {/* MODAL 3: CREATE NEW PATIENT TEST ORDER MODAL */}
       {isCreateOrderModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-6 shadow-2xl border border-slate-100 my-8 animate-scale-up">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-slate-100 animate-scale-up overflow-hidden">
+            {/* Modal Header - Fixed at Top */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-5 sm:px-6 py-4 shrink-0 bg-slate-50/50">
               <div>
-                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full uppercase">
+                <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full uppercase border border-blue-100">
                   LIS Test Order Generator
                 </span>
                 <h3 className="text-base font-bold text-slate-900 mt-1">
@@ -1090,231 +1095,245 @@ export const ResultEntryPage: React.FC = () => {
               </div>
               <button
                 onClick={() => setIsCreateOrderModalOpen(false)}
-                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 cursor-pointer"
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateOrderSubmit} className="space-y-4 text-xs">
-              {/* Select Existing Registered Patient Dropdown */}
-              {patients && patients.length > 0 && (
-                <div className="bg-blue-50/60 p-3 rounded-2xl border border-blue-100">
-                  <label className="block font-bold text-blue-900 mb-1 text-[11px]">Select Registered Patient (Auto-fill Demographics)</label>
-                  <select
-                    onChange={(e) => {
-                      const selected = patients.find((p) => p.id === e.target.value || p.uhid === e.target.value);
-                      if (selected) {
-                        setCreateOrderForm({
-                          ...createOrderForm,
-                          patientName: `${selected.firstName} ${selected.lastName}`,
-                          patientUhid: selected.uhid,
-                          age: selected.age,
-                          gender: selected.gender,
-                          bloodGroup: selected.bloodGroup || 'O+',
-                        });
-                      }
-                    }}
-                    className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 font-medium text-slate-800 text-xs"
-                  >
-                    <option value="">-- Choose Registered Patient --</option>
-                    {patients.map((p) => (
-                      <option key={p.id} value={p.uhid}>
-                        {p.firstName} {p.lastName} ({p.uhid}) • {p.age} Yrs / {p.gender} • Blood Group: {p.bloodGroup}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Patient Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Ramesh Chandran"
-                    value={createOrderForm.patientName}
-                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, patientName: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">UHID Number</label>
-                  <input
-                    type="text"
-                    required
-                    value={createOrderForm.patientUhid}
-                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, patientUhid: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold text-blue-600"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Age</label>
-                  <input
-                    type="number"
-                    value={createOrderForm.age}
-                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, age: Number(e.target.value) })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Sex / Gender</label>
-                  <select
-                    value={createOrderForm.gender}
-                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, gender: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
-                  >
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Blood Group</label>
-                  <select
-                    value={createOrderForm.bloodGroup}
-                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, bloodGroup: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-rose-600"
-                  >
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Priority</label>
-                  <select
-                    value={createOrderForm.priority}
-                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, priority: e.target.value as any })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold"
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="STAT">STAT</option>
-                    <option value="Emergency">Emergency</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Referring Doctor</label>
-                  <input
-                    type="text"
-                    value={createOrderForm.doctorName}
-                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, doctorName: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Department</label>
-                  <input
-                    type="text"
-                    value={createOrderForm.department}
-                    onChange={(e) => setCreateOrderForm({ ...createOrderForm, department: e.target.value })}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Select Tests Catalog Checkboxes with Searchbar */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block font-bold text-slate-700">
-                    Assign Investigation Tests * ({createOrderForm.selectedTestNames.length} Selected)
-                  </label>
-                </div>
-
-                {/* Test Selection Search Bar */}
-                <div className="relative mb-2.5">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    placeholder="Search investigation test name or code..."
-                    value={testSearchQuery}
-                    onChange={(e) => setTestSearchQuery(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-1.5 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                  />
-                  {testSearchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setTestSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            {/* Form Container */}
+            <form onSubmit={handleCreateOrderSubmit} className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              {/* Scrollable Form Body - Internal Scroll */}
+              <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4 text-xs custom-scrollbar">
+                {/* Select Existing Registered Patient Dropdown */}
+                {patients && patients.length > 0 && (
+                  <div className="bg-blue-50/60 p-3 rounded-2xl border border-blue-100">
+                    <label className="block font-bold text-blue-900 mb-1 text-[11px]">
+                      Select Registered Patient (Auto-fill Demographics)
+                    </label>
+                    <select
+                      onChange={(e) => {
+                        const selected = patients.find((p) => p.id === e.target.value || p.uhid === e.target.value);
+                        if (selected) {
+                          setCreateOrderForm({
+                            ...createOrderForm,
+                            patientName: `${selected.firstName} ${selected.lastName}`,
+                            patientUhid: selected.uhid,
+                            age: selected.age,
+                            gender: selected.gender,
+                            bloodGroup: selected.bloodGroup || 'O+',
+                          });
+                        }
+                      }}
+                      className="w-full bg-white border border-blue-200 rounded-xl px-3 py-2 font-medium text-slate-800 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none"
                     >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
+                      <option value="">-- Choose Registered Patient --</option>
+                      {patients.map((p) => (
+                        <option key={p.id} value={p.uhid}>
+                          {p.firstName} {p.lastName} ({p.uhid}) • {p.age} Yrs / {p.gender} • Blood Group: {p.bloodGroup}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Patient Demographics Row 1 */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Patient Name *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Ramesh Chandran"
+                      value={createOrderForm.patientName}
+                      onChange={(e) => setCreateOrderForm({ ...createOrderForm, patientName: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 focus:bg-white rounded-xl px-3 py-2 font-medium outline-none focus:ring-2 focus:ring-blue-500/20"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">UHID Number</label>
+                    <input
+                      type="text"
+                      required
+                      value={createOrderForm.patientUhid}
+                      onChange={(e) => setCreateOrderForm({ ...createOrderForm, patientUhid: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-mono font-bold text-blue-600 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Priority</label>
+                    <select
+                      value={createOrderForm.priority}
+                      onChange={(e) => setCreateOrderForm({ ...createOrderForm, priority: e.target.value as any })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold outline-none"
+                    >
+                      <option value="Normal">Normal</option>
+                      <option value="STAT">STAT</option>
+                      <option value="Emergency">Emergency</option>
+                    </select>
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto p-3 bg-slate-50 rounded-2xl border border-slate-200 custom-scrollbar">
-                  {availableTestsCatalog.filter(
-                    (test) =>
-                      test.name.toLowerCase().includes(testSearchQuery.toLowerCase()) ||
-                      test.code.toLowerCase().includes(testSearchQuery.toLowerCase())
-                  ).length > 0 ? (
-                    availableTestsCatalog.filter(
+                {/* Patient Demographics Row 2 */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 sm:gap-4">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Age</label>
+                    <input
+                      type="number"
+                      value={createOrderForm.age}
+                      onChange={(e) => setCreateOrderForm({ ...createOrderForm, age: Number(e.target.value) })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Sex / Gender</label>
+                    <select
+                      value={createOrderForm.gender}
+                      onChange={(e) => setCreateOrderForm({ ...createOrderForm, gender: e.target.value as any })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium outline-none"
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Blood Group</label>
+                    <select
+                      value={createOrderForm.bloodGroup}
+                      onChange={(e) => setCreateOrderForm({ ...createOrderForm, bloodGroup: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold text-rose-600 outline-none"
+                    >
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Referring Doctor</label>
+                    <input
+                      type="text"
+                      value={createOrderForm.doctorName}
+                      onChange={(e) => setCreateOrderForm({ ...createOrderForm, doctorName: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Department</label>
+                    <input
+                      type="text"
+                      value={createOrderForm.department}
+                      onChange={(e) => setCreateOrderForm({ ...createOrderForm, department: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-medium outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Select Tests Catalog Checkboxes with Searchbar */}
+                <div className="pt-1">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block font-bold text-slate-800">
+                      Assign Investigation Tests * ({createOrderForm.selectedTestNames.length} Selected)
+                    </label>
+                  </div>
+
+                  {/* Test Selection Search Bar */}
+                  <div className="relative mb-2.5">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="Search investigation test name or code..."
+                      value={testSearchQuery}
+                      onChange={(e) => setTestSearchQuery(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
+                    />
+                    {testSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setTestSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-56 overflow-y-auto p-3 bg-slate-50/80 rounded-2xl border border-slate-200 custom-scrollbar">
+                    {availableTestsCatalog.filter(
                       (test) =>
                         test.name.toLowerCase().includes(testSearchQuery.toLowerCase()) ||
                         test.code.toLowerCase().includes(testSearchQuery.toLowerCase())
-                    ).map((test) => {
-                      const isChecked = createOrderForm.selectedTestNames.includes(test.name);
-                      return (
-                        <div
-                          key={test.name}
-                          onClick={() => handleToggleTestSelection(test.name)}
-                          className={`p-2.5 rounded-xl border cursor-pointer flex items-center justify-between transition-all ${isChecked
-                              ? 'bg-blue-50/80 border-blue-300 text-blue-900 font-bold'
-                              : 'bg-white border-slate-200/80 text-slate-700 hover:bg-slate-100'
-                            }`}
-                        >
-                          <div className="min-w-0 pr-2">
-                            <p className="text-xs truncate">{test.name}</p>
-                            <p className="text-[10px] text-slate-400 font-mono">{test.code}</p>
-                          </div>
+                    ).length > 0 ? (
+                      availableTestsCatalog.filter(
+                        (test) =>
+                          test.name.toLowerCase().includes(testSearchQuery.toLowerCase()) ||
+                          test.code.toLowerCase().includes(testSearchQuery.toLowerCase())
+                      ).map((test) => {
+                        const isChecked = createOrderForm.selectedTestNames.includes(test.name);
+                        return (
                           <div
-                            className={`w-4 h-4 rounded-md flex items-center justify-center border text-white ${isChecked ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'
-                              }`}
+                            key={test.name}
+                            onClick={() => handleToggleTestSelection(test.name)}
+                            className={`p-2.5 rounded-xl border cursor-pointer flex items-center justify-between transition-all ${
+                              isChecked
+                                ? 'bg-blue-50 border-blue-300 text-blue-900 font-bold shadow-2xs'
+                                : 'bg-white border-slate-200/80 text-slate-700 hover:bg-slate-100'
+                            }`}
                           >
-                            {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                            <div className="min-w-0 pr-2">
+                              <p className="text-xs truncate">{test.name}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">{test.code}</p>
+                            </div>
+                            <div
+                              className={`w-4 h-4 rounded-md flex items-center justify-center border text-white ${
+                                isChecked ? 'bg-blue-600 border-blue-600' : 'border-slate-300 bg-white'
+                              }`}
+                            >
+                              {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="col-span-2 py-4 text-center text-slate-400 text-xs">
-                      No investigation tests match "{testSearchQuery}"
-                    </div>
-                  )}
+                        );
+                      })
+                    ) : (
+                      <div className="col-span-3 py-4 text-center text-slate-400 text-xs">
+                        No investigation tests match "{testSearchQuery}"
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateOrderModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 cursor-pointer"
-                >
-                  Submit & Add to List
-                </button>
+              {/* Modal Footer - Fixed at Bottom */}
+              <div className="px-5 sm:px-6 py-4 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0 bg-slate-50/50">
+                <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
+                  Select required investigation tests before submitting.
+                </span>
+                <div className="flex items-center gap-3 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateOrderModalOpen(false)}
+                    className="px-5 py-2.5 rounded-xl font-bold text-slate-600 hover:bg-slate-200/70 border border-slate-200 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-6 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer"
+                  >
+                    Submit & Add to List
+                  </button>
+                </div>
               </div>
             </form>
           </div>
