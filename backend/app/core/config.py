@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # Postgres connection. Override via .env / environment variables.
-    DATABASE_URL: str = "postgresql+psycopg2://postgres:password@localhost:5432/hms"
+    DATABASE_URL: str = "postgresql+psycopg2://postgres:Giri007g@localhost:5432/hms"
 
     SECRET_KEY: str = "CHANGE_ME_SUPER_SECRET_KEY"
     ALGORITHM: str = "HS256"

@@ -21,7 +21,7 @@ import {
   ChevronRight,
   LogOut,
   Activity,
-  ShieldAlert,
+  Siren,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -35,6 +35,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
   const navigate = useNavigate();
 
   // Accordion section states
+  const [erOpen, setErOpen] = useState(() => location.pathname.includes('/er'));
   const [patientOpen, setPatientOpen] = useState(() => location.pathname.includes('/patient'));
   const [aptOpen, setAptOpen] = useState(() => location.pathname.includes('/appointment'));
   const [ipdOpen, setIpdOpen] = useState(() => location.pathname.includes('/ipd'));
@@ -99,6 +100,77 @@ export const Sidebar: React.FC<SidebarProps> = ({ mobileOpen, setMobileOpen }) =
             <LayoutDashboard className="w-4 h-4" />
             <span>Dashboard</span>
           </NavLink>
+
+          {/* ER / Emergency Management Group */}
+          <div>
+            <button
+              onClick={() => setErOpen(!erOpen)}
+              className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <Siren className="w-4 h-4 text-rose-600 animate-pulse" />
+                <span>ER / Emergency Mgmt</span>
+              </div>
+              {erOpen ? (
+                <ChevronDown className="w-3.5 h-3.5 text-rose-400" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-rose-400" />
+              )}
+            </button>
+
+            {erOpen && (
+              <div className="mt-1 space-y-0.5">
+                <NavLink
+                  to="/reception/er/register"
+                  onClick={() => setMobileOpen(false)}
+                  className={subNavItemClass}
+                >
+                  <UserPlus className="w-3.5 h-3.5 text-rose-500" />
+                  <span>1. Emergency Registration</span>
+                </NavLink>
+                <NavLink
+                  to="/reception/er/search"
+                  onClick={() => setMobileOpen(false)}
+                  className={subNavItemClass}
+                >
+                  <Search className="w-3.5 h-3.5 text-rose-500" />
+                  <span>2. Existing UHID Search</span>
+                </NavLink>
+                <NavLink
+                  to="/reception/er/walk-in"
+                  onClick={() => setMobileOpen(false)}
+                  className={subNavItemClass}
+                >
+                  <UserCheck className="w-3.5 h-3.5 text-rose-500" />
+                  <span>3. Walk-in Registration</span>
+                </NavLink>
+                <NavLink
+                  to="/reception/er/queue"
+                  onClick={() => setMobileOpen(false)}
+                  className={subNavItemClass}
+                >
+                  <Activity className="w-3.5 h-3.5 text-rose-500" />
+                  <span>4. ER Patient Queue</span>
+                </NavLink>
+                <NavLink
+                  to="/reception/er/observation-beds"
+                  onClick={() => setMobileOpen(false)}
+                  className={subNavItemClass}
+                >
+                  <BedDouble className="w-3.5 h-3.5 text-rose-500" />
+                  <span>5. Observation Beds</span>
+                </NavLink>
+                <NavLink
+                  to="/reception/er/ipd-coordination"
+                  onClick={() => setMobileOpen(false)}
+                  className={subNavItemClass}
+                >
+                  <UserPlus2 className="w-3.5 h-3.5 text-rose-500" />
+                  <span>6. ER to IPD Admission</span>
+                </NavLink>
+              </div>
+            )}
+          </div>
 
           {/* 1. Patient Management Group */}
           <div>

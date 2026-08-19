@@ -374,10 +374,10 @@ export const PurchaseOrdersPage: React.FC = () => {
         statusFilter === 'All'
           ? true
           : statusFilter === 'Not Updated'
-          ? po.status !== 'Fulfilled' && po.status !== 'Completed'
-          : statusFilter === 'Fulfilled'
-          ? po.status === 'Fulfilled' || po.status === 'Completed'
-          : po.status === statusFilter;
+            ? po.status !== 'Fulfilled' && po.status !== 'Completed'
+            : statusFilter === 'Fulfilled'
+              ? po.status === 'Fulfilled' || po.status === 'Completed'
+              : po.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
   }, [purchaseOrders, searchQuery, statusFilter]);
@@ -491,82 +491,81 @@ export const PurchaseOrdersPage: React.FC = () => {
                       <td className="py-3.5 px-4 font-black text-slate-900 text-sm">
                         ₹{totalAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                       </td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                          po.status === 'Fulfilled' || po.status === 'Completed'
-                            ? 'bg-purple-100 text-purple-700 border border-purple-200'
-                            : po.status === 'Approved'
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : po.status === 'Pending'
-                            ? 'bg-amber-100 text-amber-700'
-                            : po.status === 'Rejected'
-                            ? 'bg-rose-100 text-rose-700'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}
-                      >
-                        {po.status === 'Fulfilled' || po.status === 'Completed'
-                          ? '✓ Fulfilled (Updated)'
-                          : `${po.status} (Not Updated)`}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1.5">
-                        <button
-                          onClick={() => {
-                            setSelectedPO(po);
-                            setIsViewModalOpen(true);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
-                          title="View Details"
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold ${po.status === 'Fulfilled' || po.status === 'Completed'
+                              ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                              : po.status === 'Approved'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : po.status === 'Pending'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : po.status === 'Rejected'
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : 'bg-slate-100 text-slate-600'
+                            }`}
                         >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenEdit(po)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer"
-                          title="Edit PO"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleOpenDelete(po)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
-                          title="Delete PO"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedPO(po);
-                            setIsPrintModalOpen(true);
-                          }}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
-                          title="Print PO"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        {po.status === 'Pending' && (
-                          <>
-                            <button
-                              onClick={() => handleStatusChange(po.id, 'Approved')}
-                              className="px-2 py-1 bg-emerald-600 text-white rounded-md text-[10px] font-bold hover:bg-emerald-700 cursor-pointer"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              onClick={() => handleStatusChange(po.id, 'Rejected')}
-                              className="px-2 py-1 bg-rose-600 text-white rounded-md text-[10px] font-bold hover:bg-rose-700 cursor-pointer"
-                            >
-                              Reject
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
+                          {po.status === 'Fulfilled' || po.status === 'Completed'
+                            ? '✓ Fulfilled (Updated)'
+                            : `${po.status} (Not Updated)`}
+                        </span>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => {
+                              setSelectedPO(po);
+                              setIsViewModalOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 cursor-pointer"
+                            title="View Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenEdit(po)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 cursor-pointer"
+                            title="Edit PO"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleOpenDelete(po)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer"
+                            title="Delete PO"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedPO(po);
+                              setIsPrintModalOpen(true);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 cursor-pointer"
+                            title="Print PO"
+                          >
+                            <Printer className="w-4 h-4" />
+                          </button>
+                          {po.status === 'Pending' && (
+                            <>
+                              <button
+                                onClick={() => handleStatusChange(po.id, 'Approved')}
+                                className="px-2 py-1 bg-emerald-600 text-white rounded-md text-[10px] font-bold hover:bg-emerald-700 cursor-pointer"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleStatusChange(po.id, 'Rejected')}
+                                className="px-2 py-1 bg-rose-600 text-white rounded-md text-[10px] font-bold hover:bg-rose-700 cursor-pointer"
+                              >
+                                Reject
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={7} className="py-12 text-center text-slate-400 text-xs">
@@ -1178,9 +1177,8 @@ export const PurchaseOrdersPage: React.FC = () => {
                       return (
                         <tr
                           key={item.id}
-                          className={`hover:bg-slate-800/50 transition-colors ${
-                            isCurrentlySelected ? 'bg-indigo-950/60' : ''
-                          }`}
+                          className={`hover:bg-slate-800/50 transition-colors ${isCurrentlySelected ? 'bg-indigo-950/60' : ''
+                            }`}
                         >
                           <td className="py-3 px-4 font-bold text-white">
                             {item.itemName}

@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth, getDefaultRouteForRole } from './context/AuthContext';
 import { HMSProvider } from './context/HMSContext';
+import { ERProvider } from './context/ERContext';
 import { NurseProvider } from './context/NurseContext';
 import { LabProvider } from './context/LabContext';
 import { PharmacyProvider } from './context/PharmacyContext';
@@ -18,6 +19,19 @@ import { ReceptionOverview } from './pages/reception/ReceptionOverview';
 import { RegisterPatientPage } from './pages/reception/patient/RegisterPatientPage';
 import { SearchPatientPage } from './pages/reception/patient/SearchPatientPage';
 import { UpdatePatientPage } from './pages/reception/patient/UpdatePatientPage';
+
+// ER Module Components (Reception)
+import { EmergencyRegistrationPage } from './pages/reception/er/EmergencyRegistrationPage';
+import { ExistingPatientSearchPage } from './pages/reception/er/ExistingPatientSearchPage';
+import { WalkInEmergencyPage } from './pages/reception/er/WalkInEmergencyPage';
+import { ERPatientQueuePage } from './pages/reception/er/ERPatientQueuePage';
+import { ObservationBedPage } from './pages/reception/er/ObservationBedPage';
+import { ERToIPDCoordinationPage } from './pages/reception/er/ERToIPDCoordinationPage';
+import { ERPatientDetailPage } from './pages/reception/er/ERPatientDetailPage';
+
+// Clinical ER Integration (Nurse & Doctor)
+import { NurseERCarePage } from './pages/nurse/er/NurseERCarePage';
+import { DoctorERConsultationPage } from './pages/doctor/er/DoctorERConsultationPage';
 
 import { BookAppointmentPage } from './pages/reception/appointment/BookAppointmentPage';
 import { WalkInPage } from './pages/reception/appointment/WalkInPage';
@@ -171,7 +185,8 @@ export default function App() {
           <LabProvider>
             <PharmacyProvider>
               <SuperAdminProvider>
-                <BrowserRouter>
+                <ERProvider>
+                  <BrowserRouter>
                   <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<LandingPage />} />
@@ -214,6 +229,15 @@ export default function App() {
                       <Route path="ipd/admit" element={<AdmitPatientPage />} />
                       <Route path="ipd/beds" element={<BedAllocationPage />} />
 
+                      {/* ER Management Subroutes */}
+                      <Route path="er/register" element={<EmergencyRegistrationPage />} />
+                      <Route path="er/search" element={<ExistingPatientSearchPage />} />
+                      <Route path="er/walk-in" element={<WalkInEmergencyPage />} />
+                      <Route path="er/queue" element={<ERPatientQueuePage />} />
+                      <Route path="er/observation-beds" element={<ObservationBedPage />} />
+                      <Route path="er/ipd-coordination" element={<ERToIPDCoordinationPage />} />
+                      <Route path="er/patient/:erVisitId" element={<ERPatientDetailPage />} />
+
                       {/* Staff Leave & Shift Roster */}
                       <Route path="leave" element={<StaffLeavePage portalRole="Receptionist" defaultEmpId="EMP-REC-001" defaultName="Reception Staff" defaultDept="Front Desk & OPD" />} />
                       <Route path="shift-roster" element={<StaffShiftRosterPage portalRole="reception" />} />
@@ -230,6 +254,8 @@ export default function App() {
                     >
                       <Route index element={<Navigate to="/doctor/dashboard" replace />} />
                       <Route path="dashboard" element={<DoctorOverview />} />
+                      <Route path="er/consultation" element={<DoctorERConsultationPage />} />
+                      <Route path="er/patient/:erVisitId" element={<ERPatientDetailPage />} />
                       <Route path="consultation" element={<ConsultationPage />} />
                       <Route path="ipd-consultation" element={<MedicalHistoryPage />} />
                       <Route path="leave" element={<LeavePage />} />
@@ -324,6 +350,8 @@ export default function App() {
                       <Route path="ipd/ward-transfer" element={<WardTransferPage />} />
                       <Route path="ipd/nursing-notes" element={<NursingNotesPage />} />
                       <Route path="ipd/medication-administration" element={<MedicationAdminPage />} />
+                      <Route path="er/care" element={<NurseERCarePage />} />
+                      <Route path="er/patient/:erVisitId" element={<ERPatientDetailPage />} />
                       <Route path="leave" element={<StaffLeavePage portalRole="Nurse" defaultEmpId="EMP-NUR-005" defaultName="Nurse Anjali Rao" defaultDept="ICU & Critical Care" />} />
                       <Route path="shift-roster" element={<StaffShiftRosterPage portalRole="nurse" />} />
                     </Route>
@@ -396,10 +424,11 @@ export default function App() {
                   {/* Global Notification Toast Container */}
                   <ToastContainer />
                 </BrowserRouter>
-              </SuperAdminProvider>
-            </PharmacyProvider>
-          </LabProvider>
-        </NurseProvider>
+              </ERProvider>
+            </SuperAdminProvider>
+          </PharmacyProvider>
+        </LabProvider>
+      </NurseProvider>
       </HMSProvider>
     </AuthProvider>
   );

@@ -12,6 +12,7 @@ import {
   Activity,
   ClipboardList,
   BedDouble,
+  Siren,
 } from 'lucide-react';
 
 interface DoctorSidebarProps {
@@ -75,6 +76,15 @@ export const DoctorSidebar: React.FC<DoctorSidebarProps> = ({ mobileOpen, setMob
           >
             <LayoutDashboard className="w-4 h-4" />
             <span>Dashboard</span>
+          </NavLink>
+
+          <NavLink
+            to="/doctor/er/consultation"
+            onClick={() => setMobileOpen(false)}
+            className={navItemClass}
+          >
+            <Siren className="w-4 h-4 text-rose-600 animate-pulse" />
+            <span>ER Emergency Cases</span>
           </NavLink>
 
           <NavLink

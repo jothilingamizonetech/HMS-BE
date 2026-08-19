@@ -16,6 +16,7 @@ import {
   UserCheck,
   Calendar,
   Clock,
+  Siren,
 } from 'lucide-react';
 
 interface NurseSidebarProps {
@@ -98,6 +99,16 @@ export const NurseSidebar: React.FC<NurseSidebarProps> = ({ mobileOpen, setMobil
           >
             <LayoutDashboard className="w-4 h-4" />
             <span>Dashboard</span>
+          </NavLink>
+
+          {/* Emergency ER Care Link */}
+          <NavLink
+            to="/nurse/er/care"
+            onClick={() => setMobileOpen(false)}
+            className={navItemClass}
+          >
+            <Siren className="w-4 h-4 text-rose-600 animate-pulse" />
+            <span>ER Triage & Care</span>
           </NavLink>
 
           {/* OPD Management Accordion */}
